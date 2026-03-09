@@ -1,0 +1,21 @@
+# Telegram session - treat like a password
+*.session
+*.session-journal
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Database (contains your message history - don't commit)
+*.db
+
+# macOS
+.DS_Store

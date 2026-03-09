@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SiMon</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --accent: #4f8ef7;
+      --accent-dim: #2a4a8a;
+      --text: #e2e8f0;
+      --text-dim: #8892a4;
+      --success: #48bb78;
+      --warning: #f6ad55;
+      --danger: #fc8181;
+      --nation-header: #c9a84c;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-left h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .header-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 16px;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-success { background: var(--success); color: #000; }
+    .btn-ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-marked { background: var(--border); color: var(--text-dim); cursor: default; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    main {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* Sidebar */
+    aside {
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      position: sticky;
+      top: 57px;
+      height: calc(100vh - 57px);
+      overflow-y: auto;
+    }
+
+    .sidebar-section {
+      margin-bottom: 28px;
+    }
+
+    .sidebar-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+
+    .nation-nav-item {
+      display: block;
+      padding: 6px 10px;
+      border-radius: 5px;
+      color: var(--text-dim);
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.1s, color 0.1s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .nation-nav-item:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .nation-nav-item.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    .channel-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 8px;
+      border-radius: 5px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .channel-item:hover { background: var(--border); }
+
+    .channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .add-channel-form {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 6px 8px;
+      outline: none;
+    }
+
+    input[type="text"]:focus { border-color: var(--accent); }
+
+    /* Content area */
+    .content {
+      padding: 28px 40px;
+    }
+
+    /* Status bar */
+    .status-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .status-info { font-size: 13px; color: var(--text-dim); }
+    .status-info strong { color: var(--text); }
+
+    /* Nation sections */
+    .nation-section {
+      margin-bottom: 36px;
+      scroll-margin-top: 80px;
+    }
+
+    .nation-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nation-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--nation-header);
+    }
+
+    .nation-event-count {
+      font-size: 12px;
+      color: var(--text-dim);
+      background: var(--border);
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+
+    .nation-summary {
+      color: var(--text);
+      line-height: 1.75;
+    }
+
+    .event-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .event-row {
+      display: grid;
+      grid-template-columns: 1fr 180px;
+      gap: 16px;
+      padding: 8px 0 8px 16px;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      align-items: baseline;
+    }
+
+    .event-row:last-child { border-bottom: none; }
+
+    .event-row::before {
+      content: "·";
+      position: absolute;
+      left: 0;
+      color: var(--nation-header);
+      font-weight: bold;
+    }
+
+    .event-text { line-height: 1.7; }
+
+    .event-sources {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.6;
+      padding-top: 2px;
+    }
+
+    .event-sources .src-entry {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .event-sources .src-num {
+      color: var(--accent);
+      font-weight: 600;
+      margin-right: 3px;
+    }
+
+    .event-sources .src-channel { color: var(--text-dim); }
+    .event-sources .src-outlet { color: var(--warning); }
+
+    sup.cite {
+      font-size: 10px;
+      color: var(--accent);
+      cursor: help;
+      font-weight: 600;
+      position: relative;
+      top: -0.4em;
+      margin: 0 1px;
+    }
+
+    sup.cite:hover {
+      color: var(--warning);
+    }
+
+    /* Tooltip */
+    sup.cite .cite-tip {
+      display: none;
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text);
+      white-space: nowrap;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    sup.cite:hover .cite-tip { display: block; }
+
+    sup.cite-bad { color: var(--danger); }
+    sup.cite-bad:hover { color: var(--danger); }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Empty / loading states */
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-dim);
+    }
+
+    .empty-state h2 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
+    .empty-state p { font-size: 14px; }
+
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .loading-overlay.active { display: flex; }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text { color: var(--text-dim); font-size: 14px; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 0.2s;
+      z-index: 200;
+    }
+
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+
+    .period-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 24px;
+      padding: 6px 12px;
+      background: var(--surface);
+      border-radius: 4px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Fetching messages...</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<header>
+  <div class="header-left">
+    <h1>SiMon</h1>
+    <div class="header-meta" id="header-meta">Loading...</div>
+  </div>
+  <div class="header-actions">
+    <span id="cost-badge" style="display:none;font-size:12px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 10px;"></span>
+    <button class="btn-ghost" onclick="openChannelManager()">Channels</button>
+    <button class="btn-success" id="mark-read-btn" onclick="markRead()">Mark as Read</button>
+    <button class="btn-primary" id="refresh-btn" onclick="refresh()">Refresh</button>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Nations</div>
+      <div id="nation-nav"></div>
+    </div>
+  </aside>
+
+  <div class="content">
+    <div id="status-bar" class="status-bar" style="display:none">
+      <div class="status-info" id="status-info"></div>
+    </div>
+
+    <div id="summary-content">
+      <div class="empty-state">
+        <h2>No summary yet</h2>
+        <p>Add your Telegram channels, then click <strong>Refresh</strong> to generate your first summary.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Channel Manager Modal -->
+<div id="channel-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:50;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px;width:420px;max-height:80vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h2 style="font-size:16px;">Manage Channels</h2>
+      <button class="btn-ghost btn-sm" onclick="closeChannelManager()">Close</button>
+    </div>
+
+    <div class="sidebar-label" style="margin-bottom:8px;">Add Channel</div>
+    <div class="add-channel-form" style="margin-bottom:20px;">
+      <input type="text" id="new-channel-input" placeholder="@channelname" onkeydown="if(event.key==='Enter')addChannel()" />
+      <button class="btn-primary btn-sm" onclick="addChannel()">Add</button>
+    </div>
+
+    <div class="sidebar-label" style="margin-bottom:8px;">Current Channels</div>
+    <div id="channel-list-modal"></div>
+  </div>
+</div>
+
+<script>
+  let currentSummary = null;
+
+  // --- Init ---
+  async function init() {
+    await loadStatus();
+    await loadSummary();
+  }
+
+  // --- Status ---
+  async function loadStatus() {
+    try {
+      const s = await api('/api/status');
+      updateHeaderMeta(s);
+    } catch(e) {
+      document.getElementById('header-meta').textContent = 'Could not load status';
+    }
+  }
+
+  function updateHeaderMeta(s) {
+    const lastRead = s.last_read_at
+      ? 'Last read: ' + formatDate(s.last_read_at)
+      : 'Never marked as read';
+    document.getElementById('header-meta').textContent =
+      `${lastRead}  ·  ${s.channel_count} channel${s.channel_count !== 1 ? 's' : ''}`;
+  }
+
+  // --- Summary ---
+  async function loadSummary() {
+    try {
+      const data = await api('/api/summary');
+      if (data.status === 'no_summary') return;
+      renderSummary(data);
+    } catch(e) {}
+  }
+
+  function renderSummary(data) {
+    currentSummary = data;
+    const events = data.events || [];
+
+    // Derive sorted nation list from events
+    const nationSet = new Set();
+    events.forEach(e => (e.countries || []).forEach(c => nationSet.add(c)));
+    const nationNames = Array.from(nationSet).sort();
+
+    // Nation nav
+    const nav = document.getElementById('nation-nav');
+    if (events.length) {
+      nav.innerHTML =
+        `<a class="nation-nav-item active" onclick="showPanel('__all__', this)">All</a>` +
+        nationNames.map(n =>
+          `<a class="nation-nav-item" onclick="showPanel('${escHtml(slugify(n))}', this)">${escHtml(n)}</a>`
+        ).join('');
+    } else {
+      nav.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 10px;">No nations yet</div>';
+    }
+
+    // Cost badge
+    const cost = data.cost;
+    const costBadge = document.getElementById('cost-badge');
+    if (cost && cost.total_cost_usd != null) {
+      const inputK = (cost.input_tokens / 1000).toFixed(1);
+      const outputK = (cost.output_tokens / 1000).toFixed(1);
+      costBadge.textContent = `${data.model || 'unknown model'} · $${cost.total_cost_usd.toFixed(4)} · ${inputK}k in / ${outputK}k out`;
+      costBadge.title = `Input: $${cost.input_cost_usd.toFixed(6)}  Output: $${cost.output_cost_usd.toFixed(6)}`;
+      costBadge.style.display = '';
+    } else {
+      costBadge.style.display = 'none';
+    }
+
+    // Status bar
+    if (events.length > 0) {
+      const period = data.period || {};
+      const fromStr = period.from ? formatDate(period.from) : 'beginning';
+      const toStr = period.to ? formatDate(period.to) : 'now';
+      let costStr = cost ? ` · <strong>$${cost.total_cost_usd.toFixed(4)}</strong>` : '';
+      document.getElementById('status-info').innerHTML =
+        `<strong>${data.message_count || '?'} messages</strong> · ${events.length} events · ${nationNames.length} nations · ${fromStr} → ${toStr}${costStr}`;
+      document.getElementById('status-bar').style.display = 'flex';
+    }
+
+    // Main content
+    const content = document.getElementById('summary-content');
+    if (events.length === 0) {
+      content.innerHTML = `<div class="empty-state"><h2>No events found</h2><p>No geopolitical events were identified in the new messages.</p></div>`;
+      return;
+    }
+
+    const period = data.period || {};
+    const fromStr = period.from ? formatDate(period.from) : null;
+    const toStr = period.to ? formatDate(period.to) : null;
+    const periodHtml = (fromStr || toStr)
+      ? `<div class="period-label">Coverage: ${fromStr ? fromStr + ' → ' : ''}${toStr || ''}</div>`
+      : '';
+
+    // All panel
+    let html = `
+      <div class="panel active" id="panel-__all__">
+        ${periodHtml}
+        <div class="nation-section">
+          <div class="nation-header">
+            <span class="nation-name">All Events</span>
+            <span class="nation-event-count">${events.length} event${events.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="nation-summary">${renderEventList(events)}</div>
+        </div>
+      </div>
+    `;
+
+    // Per-nation panels — filter events client-side
+    for (const nation of nationNames) {
+      const nationEvents = events.filter(e => (e.countries || []).includes(nation));
+      html += `
+        <div class="panel" id="panel-${slugify(nation)}">
+          ${periodHtml}
+          <div class="nation-section">
+            <div class="nation-header">
+              <span class="nation-name">${escHtml(nation)}</span>
+              <span class="nation-event-count">${nationEvents.length} event${nationEvents.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="nation-summary">${renderEventList(nationEvents)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    content.innerHTML = html;
+  }
+
+  function renderEventList(evts) {
+    if (!evts.length) return '<p style="color:var(--text-dim);font-size:13px;">No events.</p>';
+    return '<ul class="event-list">' + evts.map(e => {
+      const sources = e.sources || [];
+      const textHtml = renderCitedText(e.text, sources);
+      const srcHtml = sources.length
+        ? sources.map((s, i) => {
+            const isChannel = s.startsWith('@');
+            const cls = isChannel ? 'src-channel' : 'src-outlet';
+            return `<span class="src-entry"><span class="src-num">[${i+1}]</span><span class="${cls}">${escHtml(s)}</span></span>`;
+          }).join('')
+        : '<span class="src-entry" style="color:var(--text-dim);">No sources</span>';
+      return `<li class="event-row"><div class="event-text">${textHtml}</div><div class="event-sources">${srcHtml}</div></li>`;
+    }).join('') + '</ul>';
+  }
+
+  function renderCitedText(text, sources) {
+    const escaped = escHtml(text);
+    // Handle valid [N] citations
+    let result = escaped.replace(/\[(\d+)\]/g, (match, num) => {
+      const idx = parseInt(num, 10) - 1;
+      const src = sources[idx];
+      if (!src) return match;
+      return `<sup class="cite">[${num}]<span class="cite-tip">${escHtml(src)}</span></sup>`;
+    });
+    // Handle flagged [N!] — invalid citations marked by the server
+    result = result.replace(/\[(\d+)!\]/g, (match, num) => {
+      return `<sup class="cite cite-bad">[${num}?]<span class="cite-tip">Unknown source</span></sup>`;
+    });
+    return result;
+  }
+
+  function showPanel(id, navEl) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nation-nav-item').forEach(a => a.classList.remove('active'));
+    const panel = document.getElementById('panel-' + id);
+    if (panel) panel.classList.add('active');
+    if (navEl) navEl.classList.add('active');
+  }
+
+  // --- Actions ---
+  async function refresh() {
+    resetMarkReadBtn();
+    showLoading('Fetching messages from Telegram...');
+    disableActions(true);
+    try {
+      const data = await api('/api/refresh', 'POST');
+      if (data.status === 'no_new_messages') {
+        showToast('No new messages since last read.', 'success');
+      } else {
+        renderSummary(data);
+        showToast('Summary updated.', 'success');
+      }
+      await loadStatus();
+    } catch(e) {
+      showToast('Refresh failed: ' + e.message, 'error');
+    } finally {
+      hideLoading();
+      disableActions(false);
+    }
+  }
+
+  async function markRead() {
+    const btn = document.getElementById('mark-read-btn');
+    try {
+      await api('/api/mark-read', 'POST');
+      await loadStatus();
+      btn.textContent = 'Read ✓';
+      btn.className = 'btn-marked';
+      btn.onclick = null;
+    } catch(e) {
+      showToast('Failed to mark as read.', 'error');
+    }
+  }
+
+  function resetMarkReadBtn() {
+    const btn = document.getElementById('mark-read-btn');
+    btn.textContent = 'Mark as Read';
+    btn.className = 'btn-success';
+    btn.onclick = markRead;
+  }
+
+  // --- Channel manager ---
+  async function openChannelManager() {
+    document.getElementById('channel-modal').style.display = 'flex';
+    await refreshChannelList();
+  }
+
+  function closeChannelManager() {
+    document.getElementById('channel-modal').style.display = 'none';
+  }
+
+  async function refreshChannelList() {
+    const channels = await api('/api/channels');
+    const el = document.getElementById('channel-list-modal');
+    if (!channels.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">No channels added yet.</div>';
+      return;
+    }
+    el.innerHTML = channels.map(c => `
+      <div class="channel-item">
+        <span class="channel-name">@${escHtml(c.username)}${c.title ? ' · ' + escHtml(c.title) : ''}</span>
+        <button class="btn-danger btn-sm" onclick="removeChannel('${escHtml(c.username)}')">Remove</button>
+      </div>
+    `).join('');
+  }
+
+  async function addChannel() {
+    const input = document.getElementById('new-channel-input');
+    const username = input.value.trim();
+    if (!username) return;
+    try {
+      await api('/api/channels', 'POST', { username });
+      input.value = '';
+      await refreshChannelList();
+      showToast(`Added @${username.replace('@','')}`, 'success');
+    } catch(e) {
+      showToast('Failed to add channel: ' + e.message, 'error');
+    }
+  }
+
+  async function removeChannel(username) {
+    try {
+      await api('/api/channels/' + username, 'DELETE');
+      await refreshChannelList();
+      showToast(`Removed @${username}`, 'success');
+    } catch(e) {
+      showToast('Failed to remove channel.', 'error');
+    }
+  }
+
+  // --- Utilities ---
+  async function api(path, method = 'GET', body = null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(path, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.statusText);
+    }
+    return res.json();
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function slugify(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showLoading(text) {
+    document.getElementById('loading-text').textContent = text || 'Loading...';
+    document.getElementById('loading').classList.add('active');
+  }
+
+  function hideLoading() {
+    document.getElementById('loading').classList.remove('active');
+  }
+
+  function disableActions(disabled) {
+    document.getElementById('refresh-btn').disabled = disabled;
+    document.getElementById('mark-read-btn').disabled = disabled;
+  }
+
+  let toastTimer;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = 'toast'; }, 3500);
+  }
+
+  init();
+</script>
+</body>
+</html>
