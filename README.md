@@ -66,4 +66,4 @@ Open `http://localhost:8000`. Add channels via the Channels button (e.g. `@clash
 
 ## Cost
 
-DeepSeek-V3 pricing: $0.27/MTok input, $1.10/MTok output. A typical refresh of a few hundred messages costs under $0.01. Cost per run is displayed in the header.
+DeepSeek-V3 pricing: $0.28/MTok input (cache miss), $0.42/MTok output. A typical refresh of a few hundred messages costs under $0.01. Cost per run is displayed in the header.

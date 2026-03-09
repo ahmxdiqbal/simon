@@ -24,9 +24,9 @@ client = OpenAI(
 
 CHUNK_SIZE = 300  # messages per API call when chunking
 
-# Pricing for deepseek-chat (DeepSeek-V3). Verify at platform.deepseek.com/docs/pricing
-INPUT_COST_PER_TOKEN = 0.27 / 1_000_000
-OUTPUT_COST_PER_TOKEN = 1.10 / 1_000_000
+# Pricing for deepseek-chat (DeepSeek-V3). Verify at api-docs.deepseek.com/quick_start/pricing
+INPUT_COST_PER_TOKEN = 0.28 / 1_000_000   # cache miss rate
+OUTPUT_COST_PER_TOKEN = 0.42 / 1_000_000
 
 MODEL = "deepseek-chat"
 
