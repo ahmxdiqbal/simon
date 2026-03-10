@@ -472,6 +472,14 @@
       : 'Never marked as read';
     document.getElementById('header-meta').textContent =
       `${lastRead}  ·  ${s.channel_count} channel${s.channel_count !== 1 ? 's' : ''}`;
+
+    // If last_read_at >= last_refresh_at, the user already marked as read
+    if (s.last_read_at && s.last_refresh_at && s.last_read_at >= s.last_refresh_at) {
+      const btn = document.getElementById('mark-read-btn');
+      btn.textContent = 'Read \u2713';
+      btn.className = 'btn-marked';
+      btn.onclick = null;
+    }
   }
 
   // --- Summary ---

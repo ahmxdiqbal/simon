@@ -62,8 +62,10 @@ def get_status():
     last_read = db.get_last_read_at()
     channels = db.list_channels()
     latest = db.get_latest_summary()
+    last_refresh = db.get_state("last_refresh_at")
     return {
         "last_read_at": last_read.isoformat() if last_read else None,
+        "last_refresh_at": last_refresh,
         "channel_count": len(channels),
         "summary_available": latest is not None,
         "summary_created_at": latest["created_at"] if latest else None,
