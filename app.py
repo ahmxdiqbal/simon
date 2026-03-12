@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -55,6 +55,11 @@ class ChannelAdd(BaseModel):
 def index():
     html = (static_path / "index.html").read_text()
     return HTMLResponse(content=html)
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(static_path / "simon-bolivar.png", media_type="image/png")
 
 
 @app.get("/api/status")
