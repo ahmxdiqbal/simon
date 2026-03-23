@@ -2,7 +2,8 @@
 Summarization via DeepSeek API.
 
 Single-pass extraction with inline named citations (e.g. [Reuters], [@clashreport]).
-Code converts named citations to numbered ones deterministically.
+Code converts named citations to numbered ones deterministically, and links each
+source to the originating Telegram post or embedded news article URL.
 """
 
 from __future__ import annotations
@@ -69,6 +70,9 @@ Use full country names (e.g., "United States", not "US" or "USA").
 Do NOT use numbered citations. Use the actual source name inside the brackets.
 """
 
+URL_PATTERN = re.compile(r'https?://[^\s<>\[\]()\"\']+')
+NAMED_CITE_PATTERN = re.compile(r'\[([^\[\]]+)\]')
+
 
 def _compute_cost(input_tokens: int, output_tokens: int) -> dict:
     input_cost = input_tokens * INPUT_COST_PER_TOKEN
@@ -102,45 +106,154 @@ def _parse_response(raw: str) -> dict:
     return json.loads(raw)
 
 
-def _named_to_numbered(events: list[dict]) -> list[dict]:
-    """Convert inline named citations [SourceName] to numbered [N] with a sources array.
+def _word_set(text: str) -> set[str]:
+    """Extract lowercase alphanumeric words for overlap scoring."""
+    return set(re.findall(r'[a-z0-9]+', text.lower()))
 
-    Input:  [{"text": "...[Reuters][@foo]...", "countries": [...]}]
-    Output: [{"text": "...[1][2]...", "countries": [...], "sources": ["Reuters", "@foo"]}]
+
+def _overlap_score(event_words: set[str], msg_words: set[str]) -> float:
+    """Jaccard similarity between two word sets."""
+    if not event_words or not msg_words:
+        return 0.0
+    return len(event_words & msg_words) / len(event_words | msg_words)
+
+
+def _match_source_url(source_name: str, urls: list[str]) -> str | None:
+    """Try to find a URL whose domain matches a news org name."""
+    normalized = re.sub(r'[^a-z0-9]', '', source_name.lower())
+    for url in urls:
+        domain = url.split('/')[2].lower() if len(url.split('/')) > 2 else ""
+        domain_normalized = re.sub(r'[^a-z0-9]', '', domain)
+        if normalized in domain_normalized:
+            return url
+    return None
+
+
+def _build_message_index(messages: list[dict]) -> dict[str, list[dict]]:
+    """Group messages by channel username for fast lookup."""
+    index: dict[str, list[dict]] = {}
+    for msg in messages:
+        channel = msg.get("channel", "")
+        index.setdefault(channel, []).append(msg)
+    return index
+
+
+def _named_to_numbered(events: list[dict], messages: list[dict]) -> list[dict]:
+    """Convert inline named citations [SourceName] to numbered [N] with source objects.
+
+    Each source becomes {"name": "...", "url": "..."} where url may be null.
+    For @channel sources: url is the Telegram post link (t.me/channel/msgid).
+    For news org sources: url is extracted from the matching Telegram message if available.
     """
+    msg_index = _build_message_index(messages)
+
+    # Pre-compute word sets for all messages
+    msg_words_cache: dict[int, set[str]] = {}
+    for msg in messages:
+        msg_words_cache[id(msg)] = _word_set(msg.get("text", ""))
+
+    # Build a reverse map from channel_title to username
+    title_to_username: dict[str, str] = {}
+    for msg in messages:
+        title = msg.get("channel_title", "")
+        username = msg.get("channel", "")
+        if title and username:
+            title_to_username[title] = username
+
     result = []
     for event in events:
         text = event.get("text", "")
         countries = event.get("countries", [])
 
-        # Find all [SourceName] patterns (not purely numeric — those would be model errors)
-        named_pattern = re.compile(r'\[([^\[\]]+)\]')
+        # Strip the citation brackets to get clean text for matching
+        clean_text = NAMED_CITE_PATTERN.sub('', text)
+        event_words = _word_set(clean_text)
 
         # First pass: collect unique source names in order of appearance
-        source_index: dict[str, int] = {}
-        for match in named_pattern.finditer(text):
+        source_names: list[str] = []
+        for match in NAMED_CITE_PATTERN.finditer(text):
             name = match.group(1)
-            # Skip if it looks like a purely numeric citation (model error)
             if name.isdigit():
                 continue
-            if name not in source_index:
-                source_index[name] = len(source_index) + 1
+            if name not in source_names:
+                source_names.append(name)
 
-        sources_list = list(source_index.keys())
+        # Find the best matching messages for this event across all channels
+        # Score every message and keep the top matches
+        scored_messages: list[tuple[float, dict]] = []
+        for msg in messages:
+            score = _overlap_score(event_words, msg_words_cache[id(msg)])
+            if score > 0.05:
+                scored_messages.append((score, msg))
+        scored_messages.sort(key=lambda x: x[0], reverse=True)
 
-        # Second pass: replace named citations with numbered ones
+        # Collect all URLs from the top matching messages (take top 10)
+        top_messages = [msg for _, msg in scored_messages[:10]]
+        all_urls: list[str] = []
+        for msg in top_messages:
+            all_urls.extend(URL_PATTERN.findall(msg.get("text", "")))
+
+        # For each @channel source, find the best matching message from that channel
+        channel_best_msg: dict[str, dict] = {}
+        for name in source_names:
+            if not name.startswith("@"):
+                continue
+            username = name[1:]  # strip @
+            channel_msgs = msg_index.get(username, [])
+            # Fallback: model might use title instead of username
+            if not channel_msgs:
+                resolved = title_to_username.get(username)
+                if resolved:
+                    channel_msgs = msg_index.get(resolved, [])
+                    username = resolved
+            if not channel_msgs:
+                continue
+            best_score = -1.0
+            best_msg = None
+            for msg in channel_msgs:
+                score = _overlap_score(event_words, msg_words_cache[id(msg)])
+                if score > best_score:
+                    best_score = score
+                    best_msg = msg
+            if best_msg and best_score > 0.05:
+                channel_best_msg[username] = best_msg
+                all_urls.extend(URL_PATTERN.findall(best_msg.get("text", "")))
+
+        # Build source objects
+        source_index: dict[str, int] = {}
+        sources_list: list[dict] = []
+        for name in source_names:
+            source_index[name] = len(sources_list) + 1  # 1-indexed
+
+            url = None
+            if name.startswith("@"):
+                username = name[1:]
+                # Try direct username, then resolve via title
+                best = channel_best_msg.get(username)
+                if not best:
+                    resolved = title_to_username.get(username)
+                    if resolved:
+                        best = channel_best_msg.get(resolved)
+                        username = resolved
+                if best:
+                    url = f"https://t.me/{username}/{best['id']}"
+            else:
+                # News org: find article URL from collected URLs
+                url = _match_source_url(name, all_urls)
+
+            sources_list.append({"name": name, "url": url})
+
+        # Replace named citations with numbered ones
         def replace_citation(m):
             name = m.group(1)
             if name.isdigit():
-                # Strip stray numeric citations — we're rebuilding from scratch
                 return ""
             n = source_index.get(name)
             if n is not None:
                 return f"[{n}]"
             return ""
 
-        new_text = named_pattern.sub(replace_citation, text)
-        # Clean up whitespace artifacts
+        new_text = NAMED_CITE_PATTERN.sub(replace_citation, text)
         new_text = re.sub(r'  +', ' ', new_text).strip()
 
         result.append({
@@ -249,8 +362,8 @@ def summarize(
             all_events, total_input_tokens, total_output_tokens
         )
 
-    # Convert named citations to numbered ones
-    numbered_events = _named_to_numbered(all_events)
+    # Convert named citations to numbered ones with URLs
+    numbered_events = _named_to_numbered(all_events, messages)
 
     return {
         "period": {

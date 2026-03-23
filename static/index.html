@@ -291,6 +291,10 @@
       color: var(--warning);
     }
 
+    a sup.cite { color: var(--accent); }
+    a:hover sup.cite { color: var(--warning); }
+    a { text-decoration: none; }
+
     /* Tooltip */
     sup.cite .cite-tip {
       display: none;
@@ -585,16 +589,25 @@
     content.innerHTML = html;
   }
 
+  function normSource(s) {
+    // Handle both old format (string) and new format ({name, url})
+    if (typeof s === 'string') return { name: s, url: null };
+    return { name: s.name || '', url: s.url || null };
+  }
+
   function renderEventList(evts) {
     if (!evts.length) return '<p style="color:var(--text-dim);font-size:13px;">No events.</p>';
     return '<ul class="event-list">' + evts.map(e => {
-      const sources = e.sources || [];
+      const sources = (e.sources || []).map(normSource);
       const textHtml = renderCitedText(e.text, sources);
       const srcHtml = sources.length
         ? sources.map((s, i) => {
-            const isChannel = s.startsWith('@');
+            const isChannel = s.name.startsWith('@');
             const cls = isChannel ? 'src-channel' : 'src-outlet';
-            return `<span class="src-entry"><span class="src-num">[${i+1}]</span><span class="${cls}">${escHtml(s)}</span></span>`;
+            const nameHtml = s.url
+              ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener" class="${cls}" style="text-decoration:none;border-bottom:1px dotted currentColor;">${escHtml(s.name)}</a>`
+              : `<span class="${cls}">${escHtml(s.name)}</span>`;
+            return `<span class="src-entry"><span class="src-num">[${i+1}]</span>${nameHtml}</span>`;
           }).join('')
         : '<span class="src-entry" style="color:var(--text-dim);">No sources</span>';
       return `<li class="event-row"><div class="event-text">${textHtml}</div><div class="event-sources">${srcHtml}</div></li>`;
@@ -603,16 +616,15 @@
 
   function renderCitedText(text, sources) {
     const escaped = escHtml(text);
-    // Handle valid [N] citations
     let result = escaped.replace(/\[(\d+)\]/g, (match, num) => {
       const idx = parseInt(num, 10) - 1;
       const src = sources[idx];
       if (!src) return match;
-      return `<sup class="cite">[${num}]<span class="cite-tip">${escHtml(src)}</span></sup>`;
-    });
-    // Handle flagged [N!] — invalid citations marked by the server
-    result = result.replace(/\[(\d+)!\]/g, (match, num) => {
-      return `<sup class="cite cite-bad">[${num}?]<span class="cite-tip">Unknown source</span></sup>`;
+      const tip = `<span class="cite-tip">${escHtml(src.name)}</span>`;
+      if (src.url) {
+        return `<a href="${escHtml(src.url)}" target="_blank" rel="noopener"><sup class="cite">[${num}]${tip}</sup></a>`;
+      }
+      return `<sup class="cite">[${num}]${tip}</sup>`;
     });
     return result;
   }
