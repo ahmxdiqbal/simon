@@ -88,21 +88,21 @@ async def refresh():
     last_read = db.get_last_read_at()
     now = datetime.now(timezone.utc)
 
-    # Fetch from Telegram
+    # Fetch from Telegram (async, parallel across channels)
     try:
-        messages = await asyncio.to_thread(
-            telegram_fetcher.run_fetch, usernames, last_read
-        )
+        messages = await telegram_fetcher.fetch_messages_since(usernames, last_read)
     except Exception as e:
         print(f"[ERROR] Telegram fetch failed: {e}")
         raise HTTPException(status_code=502, detail=f"Telegram fetch failed: {e}")
 
-    # Cache any newly fetched messages
+    # Cache newly fetched messages (batched by channel)
+    by_channel: dict[str, list[dict]] = {}
     for msg in messages:
-        db.store_messages(
-            msg["channel"],
-            [{"id": msg["id"], "sent_at": msg["sent_at"], "text": msg["text"]}],
+        by_channel.setdefault(msg["channel"], []).append(
+            {"id": msg["id"], "sent_at": msg["sent_at"], "text": msg["text"]}
         )
+    for channel, msgs in by_channel.items():
+        db.store_messages(channel, msgs)
 
     # If Telegram returned nothing (e.g. rate-limited after a prior failed attempt),
     # fall back to SQLite cache so a previous successful fetch isn't lost.

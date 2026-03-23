@@ -23,7 +23,7 @@ client = OpenAI(
     base_url="https://api.deepseek.com",
 )
 
-CHUNK_SIZE = 300  # messages per API call when chunking
+CHUNK_SIZE = 1000  # messages per API call
 
 # Pricing for deepseek-chat (DeepSeek-V3). Verify at api-docs.deepseek.com/quick_start/pricing
 INPUT_COST_PER_TOKEN = 0.28 / 1_000_000   # cache miss rate
@@ -326,15 +326,13 @@ def summarize(
     total_input_tokens = 0
     total_output_tokens = 0
 
-    for i, chunk in enumerate(chunks):
+    def _call_chunk(i: int, chunk: list[dict]):
         if on_progress:
             on_progress(f"Sending chunk {i + 1}/{len(chunks)} to DeepSeek...")
-
         formatted = _format_messages_for_prompt(chunk)
         chunk_from = chunk[0]["sent_at"]
         chunk_to = chunk[-1]["sent_at"]
-
-        response = client.chat.completions.create(
+        return client.chat.completions.create(
             model=MODEL,
             max_tokens=8192,
             messages=[
@@ -350,11 +348,23 @@ def summarize(
             ],
         )
 
+    if len(chunks) == 1:
+        response = _call_chunk(0, chunks[0])
         total_input_tokens += response.usage.prompt_tokens
         total_output_tokens += response.usage.completion_tokens
-
         parsed = _parse_response(response.choices[0].message.content)
         all_events.extend(parsed.get("events", []))
+    else:
+        # Parallel API calls for multiple chunks
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+            futures = {pool.submit(_call_chunk, i, c): i for i, c in enumerate(chunks)}
+            for future in as_completed(futures):
+                response = future.result()
+                total_input_tokens += response.usage.prompt_tokens
+                total_output_tokens += response.usage.completion_tokens
+                parsed = _parse_response(response.choices[0].message.content)
+                all_events.extend(parsed.get("events", []))
 
     # Deduplicate across chunks if there were multiple
     if len(chunks) > 1:

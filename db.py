@@ -116,16 +116,16 @@ def update_channel_title(username: str, title: str) -> None:
 
 def store_messages(channel: str, messages: list[dict]) -> int:
     """Insert messages, ignoring duplicates. Returns count of new rows inserted."""
-    inserted = 0
+    if not messages:
+        return 0
     with _connect() as conn:
-        for msg in messages:
-            cur = conn.execute(
-                """INSERT OR IGNORE INTO raw_messages (channel, message_id, sent_at, text)
-                   VALUES (?, ?, ?, ?)""",
-                (channel, msg["id"], msg["sent_at"], msg["text"]),
-            )
-            inserted += cur.rowcount
-    return inserted
+        rows = [(channel, m["id"], m["sent_at"], m["text"]) for m in messages]
+        conn.executemany(
+            """INSERT OR IGNORE INTO raw_messages (channel, message_id, sent_at, text)
+               VALUES (?, ?, ?, ?)""",
+            rows,
+        )
+        return conn.total_changes
 
 
 def get_messages_since(ts: datetime | None) -> list[dict]:
