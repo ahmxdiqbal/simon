@@ -154,6 +154,29 @@ def mark_read():
     return {"status": "ok", "marked_at": ts.isoformat()}
 
 
+class SetLastRead(BaseModel):
+    timestamp: str  # ISO format or "now"
+
+
+@app.post("/api/set-last-read")
+def set_last_read(body: SetLastRead):
+    """Manually set last_read_at to a specific timestamp or relative offset."""
+    raw = body.timestamp.strip()
+    if raw.lower() == "now":
+        ts = datetime.now(timezone.utc)
+    else:
+        try:
+            # Normalize: replace trailing Z with +00:00 for fromisoformat compat
+            normalized = raw.replace("Z", "+00:00").replace("z", "+00:00")
+            ts = datetime.fromisoformat(normalized)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid timestamp. Use ISO format or 'now'.")
+    db.set_last_read_at(ts)
+    return {"status": "ok", "last_read_at": ts.isoformat()}
+
+
 @app.get("/api/channels")
 def get_channels():
     return db.list_channels()

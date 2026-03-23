@@ -406,6 +406,15 @@
   <div class="header-actions">
     <span id="cost-badge" style="display:none;font-size:12px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 10px;"></span>
     <button class="btn-ghost" onclick="openChannelManager()">Channels</button>
+    <select id="window-select" class="btn-ghost" style="font-size:12px;padding:6px 8px;background:var(--surface);color:var(--text-dim);border:1px solid var(--border);border-radius:6px;cursor:pointer;" onchange="setFetchWindow(this.value)">
+      <option value="" disabled selected>Fetch window</option>
+      <option value="1">Last 1h</option>
+      <option value="6">Last 6h</option>
+      <option value="24">Last 24h</option>
+      <option value="72">Last 3d</option>
+      <option value="168">Last 7d</option>
+      <option value="custom">Custom...</option>
+    </select>
     <button class="btn-success" id="mark-read-btn" onclick="markRead()">Mark as Read</button>
     <button class="btn-primary" id="refresh-btn" onclick="refresh()">Refresh</button>
   </div>
@@ -677,6 +686,33 @@
     btn.textContent = 'Mark as Read';
     btn.className = 'btn-success';
     btn.onclick = markRead;
+  }
+
+  async function setFetchWindow(value) {
+    const select = document.getElementById('window-select');
+    let ts;
+    if (value === 'custom') {
+      const input = prompt('Enter datetime (YYYY-MM-DD HH:MM) in UTC:');
+      select.selectedIndex = 0;
+      if (!input) return;
+      ts = input.trim();
+      // Append seconds and timezone if needed
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(ts)) ts += ':00+00:00';
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(ts)) ts += 'T00:00:00+00:00';
+    } else {
+      const hours = parseInt(value);
+      const d = new Date(Date.now() - hours * 3600 * 1000);
+      ts = d.toISOString();
+      select.selectedIndex = 0;
+    }
+    try {
+      await api('/api/set-last-read', 'POST', { timestamp: ts });
+      await loadStatus();
+      resetMarkReadBtn();
+      showToast(`Fetch window set to ${value === 'custom' ? ts : 'last ' + value + 'h'}`, 'success');
+    } catch(e) {
+      showToast('Failed to set fetch window: ' + e.message, 'error');
+    }
   }
 
   // --- Channel manager ---
