@@ -368,11 +368,15 @@ def summarize(
 
     # Deduplicate across chunks if there were multiple
     if len(chunks) > 1:
+        if on_progress:
+            on_progress("Deduplicating events across chunks...")
         all_events, total_input_tokens, total_output_tokens = _dedup_events(
             all_events, total_input_tokens, total_output_tokens
         )
 
     # Convert named citations to numbered ones with URLs
+    if on_progress:
+        on_progress(f"Linking {len(all_events)} events to sources...")
     numbered_events = _named_to_numbered(all_events, messages)
 
     return {

@@ -77,31 +77,59 @@ async def fetch_messages_since(
 ) -> list[dict]:
     """
     Fetch messages from all channels posted after `since`.
-    Channels are fetched in parallel. Returns list of dicts sorted chronologically.
+    Channels are fetched in parallel. Calls on_progress with status updates.
+    Returns list of dicts sorted chronologically.
     """
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)
 
     client = await _get_client()
+    total_fetched = 0
+    channels_done = 0
+    total_channels = len(usernames)
+
+    if on_progress:
+        on_progress(f"Fetching {total_channels} channels...")
 
     async def fetch_one(username: str) -> list[dict]:
-        if on_progress:
-            on_progress(f"Fetching @{username}...")
+        nonlocal total_fetched, channels_done
         try:
-            return await _fetch_channel(client, username, since)
+            msgs = await _fetch_channel(client, username, since)
+            channels_done += 1
+            total_fetched += len(msgs)
+            if on_progress:
+                on_progress(
+                    f"@{username}: {len(msgs)} msgs "
+                    f"({channels_done}/{total_channels} channels, {total_fetched} total)"
+                )
+            return msgs
         except FloodWaitError as e:
-            print(f"  Rate limited on @{username}. Waiting {e.seconds}s...")
+            if on_progress:
+                on_progress(f"@{username}: rate limited, waiting {e.seconds}s...")
             await asyncio.sleep(e.seconds)
             try:
-                return await _fetch_channel(client, username, since)
+                msgs = await _fetch_channel(client, username, since)
+                channels_done += 1
+                total_fetched += len(msgs)
+                if on_progress:
+                    on_progress(
+                        f"@{username}: {len(msgs)} msgs "
+                        f"({channels_done}/{total_channels} channels, {total_fetched} total)"
+                    )
+                return msgs
             except Exception as retry_err:
+                channels_done += 1
                 print(f"  Skipping @{username} after retry: {retry_err}")
+                if on_progress:
+                    on_progress(f"@{username}: skipped ({retry_err})")
                 return []
         except Exception as e:
+            channels_done += 1
             print(f"  Skipping @{username}: {e}")
+            if on_progress:
+                on_progress(f"@{username}: skipped ({e})")
             return []
 
-    # Fetch all channels in parallel
     results = await asyncio.gather(*[fetch_one(u) for u in usernames])
 
     all_messages: list[dict] = []
@@ -109,6 +137,10 @@ async def fetch_messages_since(
         all_messages.extend(channel_msgs)
 
     all_messages.sort(key=lambda m: m["sent_at"])
+
+    if on_progress:
+        on_progress(f"Fetched {len(all_messages)} messages from {total_channels} channels")
+
     return all_messages
 
 

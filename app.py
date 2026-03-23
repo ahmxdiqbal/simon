@@ -4,7 +4,7 @@ FastAPI server for SiMon.
 Endpoints:
   GET  /                  - serve the dashboard HTML
   GET  /api/status        - last_read_at, channel count, cached summary metadata
-  POST /api/refresh       - fetch new messages + summarize, return summary
+  POST /api/refresh       - SSE stream: fetch + summarize with progress updates
   POST /api/mark-read     - set last_read_at to now
   GET  /api/summary       - return latest cached summary
   GET  /api/channels      - list channels
@@ -13,11 +13,12 @@ Endpoints:
 """
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -77,9 +78,14 @@ def get_status():
     }
 
 
+def _sse_event(event: str, data: dict) -> str:
+    """Format a Server-Sent Event."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
 @app.post("/api/refresh")
 async def refresh():
-    """Fetch new messages from Telegram and summarize them."""
+    """SSE stream: fetch messages, summarize, and stream progress updates."""
     channels = db.list_channels()
     if not channels:
         raise HTTPException(status_code=400, detail="No channels configured. Add channels first.")
@@ -88,51 +94,95 @@ async def refresh():
     last_read = db.get_last_read_at()
     now = datetime.now(timezone.utc)
 
-    # Fetch from Telegram (async, parallel across channels)
-    try:
-        messages = await telegram_fetcher.fetch_messages_since(usernames, last_read)
-    except Exception as e:
-        print(f"[ERROR] Telegram fetch failed: {e}")
-        raise HTTPException(status_code=502, detail=f"Telegram fetch failed: {e}")
+    async def event_stream():
+        progress_queue: asyncio.Queue[str] = asyncio.Queue()
+        loop = asyncio.get_event_loop()
 
-    # Cache newly fetched messages (batched by channel)
-    by_channel: dict[str, list[dict]] = {}
-    for msg in messages:
-        by_channel.setdefault(msg["channel"], []).append(
-            {"id": msg["id"], "sent_at": msg["sent_at"], "text": msg["text"]}
+        def on_progress(msg: str):
+            # Thread-safe: works from both async context and executor threads
+            loop.call_soon_threadsafe(progress_queue.put_nowait, msg)
+
+        # --- Fetch phase ---
+        fetch_task = asyncio.create_task(
+            telegram_fetcher.fetch_messages_since(usernames, last_read, on_progress)
         )
-    for channel, msgs in by_channel.items():
-        db.store_messages(channel, msgs)
 
-    # If Telegram returned nothing (e.g. rate-limited after a prior failed attempt),
-    # fall back to SQLite cache so a previous successful fetch isn't lost.
-    if not messages:
-        messages = db.get_messages_since(last_read)
+        # Drain progress while fetch is running
+        while not fetch_task.done():
+            try:
+                msg = await asyncio.wait_for(progress_queue.get(), timeout=0.3)
+                yield _sse_event("progress", {"message": msg})
+            except asyncio.TimeoutError:
+                pass
 
-    if not messages:
-        return {"status": "no_new_messages", "message_count": 0, "nations": {}}
+        # Drain any remaining progress messages
+        while not progress_queue.empty():
+            msg = progress_queue.get_nowait()
+            yield _sse_event("progress", {"message": msg})
 
-    # Summarize
-    try:
-        summary = await asyncio.to_thread(
-            summarizer.summarize, messages, last_read, now
-        )
-    except Exception as e:
-        print(f"[ERROR] Summarization failed: {e}")
-        raise HTTPException(status_code=502, detail=f"Summarization failed: {e}")
+        try:
+            messages = fetch_task.result()
+        except Exception as e:
+            yield _sse_event("error", {"message": f"Telegram fetch failed: {e}"})
+            return
 
-    # Update channel titles in DB
-    seen_titles: dict[str, str] = {}
-    for msg in messages:
-        if msg["channel"] not in seen_titles and msg.get("channel_title"):
-            seen_titles[msg["channel"]] = msg["channel_title"]
-    for username, title in seen_titles.items():
-        db.update_channel_title(username, title)
+        # Cache messages
+        by_channel: dict[str, list[dict]] = {}
+        for msg in messages:
+            by_channel.setdefault(msg["channel"], []).append(
+                {"id": msg["id"], "sent_at": msg["sent_at"], "text": msg["text"]}
+            )
+        for channel, msgs in by_channel.items():
+            db.store_messages(channel, msgs)
 
-    db.store_summary(last_read, now, summary)
-    db.set_state("last_refresh_at", now.isoformat())
+        # Fallback to SQLite cache
+        if not messages:
+            messages = db.get_messages_since(last_read)
 
-    return {"status": "ok", **summary}
+        if not messages:
+            yield _sse_event("done", {"status": "no_new_messages", "message_count": 0})
+            return
+
+        # --- Summarize phase ---
+        yield _sse_event("progress", {"message": f"Summarizing {len(messages)} messages..."})
+
+        def run_summarize():
+            return summarizer.summarize(messages, last_read, now, on_progress=on_progress)
+
+        summarize_task = asyncio.get_event_loop().run_in_executor(None, run_summarize)
+
+        # Drain progress while summarize is running
+        while not summarize_task.done():
+            try:
+                msg = await asyncio.wait_for(progress_queue.get(), timeout=0.3)
+                yield _sse_event("progress", {"message": msg})
+            except asyncio.TimeoutError:
+                pass
+
+        while not progress_queue.empty():
+            msg = progress_queue.get_nowait()
+            yield _sse_event("progress", {"message": msg})
+
+        try:
+            summary = await summarize_task
+        except Exception as e:
+            yield _sse_event("error", {"message": f"Summarization failed: {e}"})
+            return
+
+        # Update channel titles
+        seen_titles: dict[str, str] = {}
+        for msg in messages:
+            if msg["channel"] not in seen_titles and msg.get("channel_title"):
+                seen_titles[msg["channel"]] = msg["channel_title"]
+        for username, title in seen_titles.items():
+            db.update_channel_title(username, title)
+
+        db.store_summary(last_read, now, summary)
+        db.set_state("last_refresh_at", now.isoformat())
+
+        yield _sse_event("done", {"status": "ok", **summary})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/api/summary")
