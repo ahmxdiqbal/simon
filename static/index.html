@@ -336,15 +336,27 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.6);
+      background: rgba(0,0,0,0.75);
       z-index: 100;
       align-items: center;
       justify-content: center;
       flex-direction: column;
-      gap: 16px;
+      gap: 0;
     }
 
     .loading-overlay.active { display: flex; }
+
+    .loading-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      max-width: 360px;
+    }
 
     .spinner {
       width: 36px;
@@ -357,7 +369,7 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .loading-text { color: var(--text-dim); font-size: 14px; }
+    .loading-text { color: var(--text-dim); font-size: 14px; text-align: center; }
 
     .toast {
       position: fixed;
@@ -392,8 +404,10 @@
 <body>
 
 <div class="loading-overlay" id="loading">
-  <div class="spinner"></div>
-  <div class="loading-text" id="loading-text">Fetching messages...</div>
+  <div class="loading-panel">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">Fetching messages...</div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
