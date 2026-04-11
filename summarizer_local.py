@@ -81,8 +81,12 @@ def _get_models():
 
 
 def _generate(model, tokenizer, user_content: str, max_tokens: int) -> str:
-    """Generate using the model's chat template with thinking disabled."""
-    from mlx_lm import generate
+    """Generate using the model's chat template with thinking disabled.
+
+    Streams tokens and stops early if the model enters a repetition loop.
+    """
+    from mlx_lm import stream_generate
+
     messages = [{"role": "user", "content": user_content}]
     prompt = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
@@ -91,17 +95,80 @@ def _generate(model, tokenizer, user_content: str, max_tokens: int) -> str:
     # Close it immediately so the model skips reasoning and outputs directly.
     if prompt.rstrip().endswith("<think>"):
         prompt = prompt.rstrip() + "\n</think>\n\n"
-    output = generate(
+
+    # Stream tokens and detect repetition loops
+    text = ""
+    segment_size = 200
+
+    for response in stream_generate(
         model,
         tokenizer,
-        prompt=prompt,
+        prompt,
         max_tokens=max_tokens,
-        verbose=False,
-    )
+    ):
+        text += response.text
+
+        # Check for repetition: compare last two segments of equal length
+        if len(text) > segment_size * 3:
+            current = text[-segment_size:]
+            previous = text[-segment_size * 2 : -segment_size]
+            if current == previous:
+                print(f"[generate] Repetition loop at {len(text)} chars, stopping")
+                break
+
     # Safety: strip any residual think blocks from output
-    if "</think>" in output:
-        output = output.split("</think>", 1)[1]
-    return output.strip()
+    if "</think>" in text:
+        text = text.split("</think>", 1)[1]
+    return text.strip()
+
+
+def _repair_truncated_json(raw: str) -> list[dict] | None:
+    """Try to salvage events from truncated JSON output.
+
+    The model often produces valid events then loops and gets cut off mid-JSON.
+    Strategy: find the last complete event object and close the array/object.
+    """
+    # Find the events array start
+    match = re.search(r'\{\s*"events"\s*:\s*\[', raw)
+    if not match:
+        return None
+
+    # Find all complete event objects (those ending with a closing brace
+    # followed by a comma or the array close)
+    events_start = match.end()
+    events = []
+    depth = 0
+    obj_start = None
+
+    for i in range(events_start, len(raw)):
+        ch = raw[i]
+        if ch == '{' and depth == 0:
+            obj_start = i
+            depth = 1
+        elif ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and obj_start is not None:
+                try:
+                    obj = json.loads(raw[obj_start : i + 1])
+                    if "text" in obj:
+                        events.append(obj)
+                except json.JSONDecodeError:
+                    pass
+                obj_start = None
+
+    if events:
+        # Deduplicate by text since the model was looping
+        seen = set()
+        unique = []
+        for e in events:
+            t = e["text"]
+            if t not in seen:
+                seen.add(t)
+                unique.append(e)
+        return unique
+    return None
 
 
 def _parse_triage_output(raw: str) -> dict | None:
@@ -156,6 +223,12 @@ def _triage_messages(
         if not text:
             continue
 
+        # Skip recap/digest messages — they're redundant since individual
+        # events already appear in other messages, and they overwhelm the
+        # synthesis model with too much content per line.
+        if len(text) > 800:
+            continue
+
         prompt = TRIAGE_PROMPT + text
         raw_output = _generate(model, tokenizer, prompt, max_tokens=150)
         parsed = _parse_triage_output(raw_output)
@@ -207,53 +280,90 @@ def _assemble_for_synthesis(extractions: list[dict]) -> str:
         countries = ", ".join(ext["countries"]) if ext["countries"] else "unknown"
 
         for detail in ext["details"]:
+            # Truncate overly long details to prevent synthesis overload
+            if len(detail) > 300:
+                detail = detail[:300]
             lines.append(
                 f"[@{channel}] {detail} | Countries: {countries} | Source: {source}"
             )
     return "\n".join(lines)
 
 
-def _synthesize_events(
-    assembled_text: str, on_progress: callable | None = None
-) -> list[dict]:
-    """Run 4B model on assembled facts to produce deduplicated events."""
-    if on_progress:
-        on_progress("Synthesizing events with 4B model...")
-
-    model, tokenizer = _manager.get_synth()
-    prompt = SYNTH_PROMPT + assembled_text
-
-    raw_output = _generate(model, tokenizer, prompt, max_tokens=4096)
-
-    # Try parsing the response
+def _try_parse_events(raw_output: str) -> list[dict] | None:
+    """Try all parsing strategies on raw model output. Returns events or None."""
+    # Strategy 1: clean JSON parse
     try:
         parsed = _parse_response(raw_output)
         events = parsed.get("events", [])
         if events:
             return events
-    except (json.JSONDecodeError, Exception):
+    except Exception:
         pass
 
-    # Retry once on failure
-    if on_progress:
-        on_progress("Retrying synthesis...")
-    raw_output = _generate(model, tokenizer, prompt, max_tokens=4096)
-
-    try:
-        parsed = _parse_response(raw_output)
-        return parsed.get("events", [])
-    except (json.JSONDecodeError, Exception):
-        pass
-
-    # Last resort: regex-based JSON extraction
+    # Strategy 2: regex for complete JSON
     match = re.search(r'\{"events"\s*:\s*\[.*\]\s*\}', raw_output, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group()).get("events", [])
+            events = json.loads(match.group()).get("events", [])
+            if events:
+                return events
         except json.JSONDecodeError:
             pass
 
-    return []
+    # Strategy 3: repair truncated/looping JSON
+    repaired = _repair_truncated_json(raw_output)
+    if repaired:
+        return repaired
+
+    return None
+
+
+SYNTH_CHUNK_SIZE = 15  # lines per synthesis chunk
+
+
+def _synthesize_events(
+    assembled_text: str, on_progress: callable | None = None
+) -> list[dict]:
+    """Run 4B model on assembled facts in chunks to produce events.
+
+    The 4B model degenerates into repetition loops on large inputs.
+    Chunking into ~15-line batches keeps each call within the model's
+    reliable output range, then we merge results.
+    """
+    model, tokenizer = _manager.get_synth()
+    lines = assembled_text.splitlines()
+    chunks = [
+        lines[i : i + SYNTH_CHUNK_SIZE]
+        for i in range(0, len(lines), SYNTH_CHUNK_SIZE)
+    ]
+
+    all_events: list[dict] = []
+
+    for i, chunk in enumerate(chunks):
+        if on_progress:
+            on_progress(f"Synthesizing chunk {i + 1}/{len(chunks)}...")
+
+        chunk_text = "\n".join(chunk)
+        raw_output = _generate(model, tokenizer, SYNTH_PROMPT + chunk_text, max_tokens=4096)
+
+        events = _try_parse_events(raw_output)
+        if events:
+            all_events.extend(events)
+        else:
+            # Retry once for this chunk
+            print(f"[synth] Chunk {i + 1} failed, retrying. "
+                  f"Output length: {len(raw_output)}")
+            raw_output = _generate(model, tokenizer, SYNTH_PROMPT + chunk_text, max_tokens=4096)
+            events = _try_parse_events(raw_output)
+            if events:
+                all_events.extend(events)
+            else:
+                print(f"[synth] Chunk {i + 1} retry also failed, skipping")
+
+    if on_progress:
+        on_progress(f"Synthesis complete: {len(all_events)} events from {len(chunks)} chunks")
+
+    return all_events
 
 
 def summarize_local(
