@@ -19,3 +19,10 @@ build/
 
 # macOS
 .DS_Store
+
+# Claude Code local config
+.claude/
+
+# Test fixtures and generated summaries (contain real message data)
+tests/fixtures/
+tests/summaries/
