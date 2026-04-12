@@ -7,12 +7,10 @@ under tests/summaries/ for manual side-by-side quality comparison.
 
 Filenames:
   - DeepSeek:  <model>.md               (e.g. deepseek-chat.md)
-  - Local:     <name>_<size>_<quant>.md (e.g. qwen3.5_4b_4.md)
+  - Local:     <name>_<size>_<quant>.md (e.g. qwen3.5_9b_4.md)
 
-The local filename reflects the SYNTH model (the one producing the final events).
-
-Swap models by editing TRIAGE_MODEL / SYNTH_MODEL in summarizer_local.py
-and rerunning this script.
+Swap the local model by editing MODEL in summarizer_local.py and rerunning
+this script.
 """
 
 from __future__ import annotations
@@ -50,15 +48,16 @@ class PhaseTimer:
                 return ts
         return None
 
-    def triage_duration(self) -> float | None:
-        start = self._first_with("Phase 1:")
-        end = self._first_with("Phase 2:")
+    def chunks_duration(self) -> float | None:
+        """Time from first chunk send to dedup (or linking if no dedup)."""
+        start = self._first_with("Sending chunk 1")
+        end = self._first_with("Deduplicating") or self._first_with("Linking")
         if start is None or end is None:
             return None
         return end - start
 
-    def synth_duration(self) -> float | None:
-        start = self._first_with("Phase 3:")
+    def dedup_duration(self) -> float | None:
+        start = self._first_with("Deduplicating")
         end = self._first_with("Linking")
         if start is None or end is None:
             return None
@@ -76,12 +75,11 @@ def _load_json(path: Path) -> dict:
 def _local_slug(model_id: str) -> str:
     """
     Convert an mlx-community model id to the filename stem.
-    Example: "mlx-community/Qwen3.5-4B-MLX-4bit" -> "qwen3.5_4b_4"
+    Example: "mlx-community/Qwen3.5-9B-MLX-4bit" -> "qwen3.5_9b_4"
     """
     short = model_id.split("/")[-1]
     parts = short.split("-")
     if len(parts) < 4:
-        # Unexpected format — fall back to lowercased short name so we still write a file.
         return short.lower().replace("-", "_")
     name = parts[0].lower()
     size = parts[1].lower()
@@ -106,7 +104,11 @@ def _write_deepseek_md(baseline: dict, fixture: dict) -> Path:
     path = SUMMARIES_DIR / f"{model}.md"
 
     duration = baseline.get("duration_seconds")
-    duration_str = f"{duration:.1f}s" if duration is not None else "— (re-run collect_fixture.py to capture timing)"
+    duration_str = (
+        f"{duration:.1f}s"
+        if duration is not None
+        else "— (re-run collect_fixture.py to capture timing)"
+    )
     cost = baseline.get("cost", {}).get("total_cost_usd", 0.0)
 
     header = [
@@ -130,33 +132,31 @@ def _write_deepseek_md(baseline: dict, fixture: dict) -> Path:
 def _write_local_md(
     result: dict,
     fixture: dict,
-    triage_model: str,
-    synth_model: str,
+    model: str,
     total_time: float,
-    triage_time: float | None,
-    synth_time: float | None,
+    chunks_time: float | None,
+    dedup_time: float | None,
 ) -> Path:
     SUMMARIES_DIR.mkdir(parents=True, exist_ok=True)
-    path = SUMMARIES_DIR / f"{_local_slug(synth_model)}.md"
+    path = SUMMARIES_DIR / f"{_local_slug(model)}.md"
 
-    if triage_time is not None and triage_time > 0:
-        mps = fixture["message_count"] / triage_time
-        triage_str = f"{triage_time:.1f}s  ({mps:.2f} msgs/sec)"
+    if chunks_time is not None and chunks_time > 0:
+        mps = fixture["message_count"] / chunks_time
+        chunks_str = f"{chunks_time:.1f}s  ({mps:.2f} msgs/sec)"
     else:
-        triage_str = "—"
-    synth_str = f"{synth_time:.1f}s" if synth_time is not None else "—"
+        chunks_str = "—"
+    dedup_str = f"{dedup_time:.1f}s" if dedup_time is not None else "—"
 
     header = [
-        f"# Local — {synth_model}",
+        f"# Local — {model}",
         "",
-        f"- Triage model:  {triage_model}",
-        f"- Synth model:   {synth_model}",
-        f"- Messages:      {fixture['message_count']}",
-        f"- Total:         {total_time:.1f}s",
-        f"- Triage phase:  {triage_str}",
-        f"- Synth phase:   {synth_str}",
-        f"- Events:        {len(result.get('events', []))}",
-        f"- Window:        {fixture['from_ts'][:19]} → {fixture['to_ts'][:19]}",
+        f"- Model:     {model}",
+        f"- Messages:  {fixture['message_count']}",
+        f"- Total:     {total_time:.1f}s",
+        f"- Chunks:    {chunks_str}",
+        f"- Dedup:     {dedup_str}",
+        f"- Events:    {len(result.get('events', []))}",
+        f"- Window:    {fixture['from_ts'][:19]} → {fixture['to_ts'][:19]}",
         "",
         "## Events",
         "",
@@ -175,12 +175,11 @@ def main() -> None:
     from_ts = datetime.fromisoformat(fixture["from_ts"])
     to_ts = datetime.fromisoformat(fixture["to_ts"])
 
-    from summarizer_local import SYNTH_MODEL, TRIAGE_MODEL, summarize_local
+    from summarizer_local import MODEL, summarize_local
 
     print(f"Fixture: {len(messages)} messages")
     print(f"Window:  {fixture['from_ts'][:19]}  →  {fixture['to_ts'][:19]}")
-    print(f"\nTriage: {TRIAGE_MODEL}")
-    print(f"Synth:  {SYNTH_MODEL}\n")
+    print(f"\nModel:   {MODEL}\n")
     print("Running summarize_local (first run includes model load)...\n")
 
     timer = PhaseTimer()
@@ -188,29 +187,30 @@ def main() -> None:
     result = summarize_local(messages, from_ts, to_ts, on_progress=timer)
     total_time = time.monotonic() - t0
 
-    triage_time = timer.triage_duration()
-    synth_time = timer.synth_duration()
+    chunks_time = timer.chunks_duration()
+    dedup_time = timer.dedup_duration()
 
     deepseek_path = _write_deepseek_md(baseline, fixture)
-    local_path = _write_local_md(
-        result, fixture, TRIAGE_MODEL, SYNTH_MODEL, total_time, triage_time, synth_time
-    )
+    local_path = _write_local_md(result, fixture, MODEL, total_time, chunks_time, dedup_time)
 
     bar = "-" * 70
     print(f"\n{bar}\n  TIMING\n{bar}")
     print(f"  Messages:     {len(messages)}")
     print(f"  Local total:  {total_time:7.1f}s")
-    if triage_time is not None:
-        mps = len(messages) / triage_time if triage_time > 0 else 0.0
-        print(f"  Triage phase: {triage_time:7.1f}s   ({mps:.2f} msgs/sec)")
-    if synth_time is not None:
-        print(f"  Synth  phase: {synth_time:7.1f}s")
+    if chunks_time is not None:
+        mps = len(messages) / chunks_time if chunks_time > 0 else 0.0
+        print(f"  Chunks:       {chunks_time:7.1f}s   ({mps:.2f} msgs/sec)")
+    if dedup_time is not None:
+        print(f"  Dedup:        {dedup_time:7.1f}s")
 
     ds_duration = baseline.get("duration_seconds")
     if ds_duration is not None:
         print(f"  DeepSeek:     {ds_duration:7.1f}s")
     else:
-        print(f"  DeepSeek:     — (delete deepseek_baseline.json and rerun collect_fixture.py to capture)")
+        print(
+            "  DeepSeek:     — (delete deepseek_baseline.json and rerun "
+            "collect_fixture.py to capture)"
+        )
 
     print(f"\n  Events: local={len(result['events'])}  deepseek={len(baseline['events'])}")
     print(f"\n  Wrote: {local_path.relative_to(ROOT)}")

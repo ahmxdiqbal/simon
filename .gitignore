@@ -23,6 +23,7 @@ build/
 # Claude Code local config
 .claude/
 
-# Test fixtures and generated summaries (contain real message data)
+# Test fixtures, summaries, and debug dumps
 tests/fixtures/
 tests/summaries/
+tests/debug/
