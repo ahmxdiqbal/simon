@@ -9,7 +9,7 @@ Filenames:
   - DeepSeek:  <model>.md               (e.g. deepseek-chat.md)
   - Local:     <name>_<size>_<quant>.md (e.g. qwen3.5_9b_4.md)
 
-Swap the local model by editing MODEL in summarizer_local.py and rerunning
+Swap the local model by editing MODEL in summarizer/local.py and rerunning
 this script.
 """
 
@@ -175,7 +175,7 @@ def main() -> None:
     from_ts = datetime.fromisoformat(fixture["from_ts"])
     to_ts = datetime.fromisoformat(fixture["to_ts"])
 
-    from summarizer_local import MODEL, summarize_local
+    from summarizer.local import MODEL, summarize_local
 
     print(f"Fixture: {len(messages)} messages")
     print(f"Window:  {fixture['from_ts'][:19]}  →  {fixture['to_ts'][:19]}")

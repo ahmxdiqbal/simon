@@ -71,7 +71,7 @@ def generate_baseline(fixture: dict) -> None:
         print(f"[skip] {BASELINE_FILE.name} already exists")
         return
 
-    from summarizer_deepseek import summarize_deepseek
+    from summarizer.deepseek import summarize_deepseek
 
     from_ts = datetime.fromisoformat(fixture["from_ts"])
     to_ts = datetime.fromisoformat(fixture["to_ts"])

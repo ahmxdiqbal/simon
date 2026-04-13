@@ -252,8 +252,8 @@ def summarize(
 ) -> dict:
     """Dispatch to the configured summarization backend."""
     if BACKEND == "deepseek":
-        from summarizer_deepseek import summarize_deepseek
+        from .deepseek import summarize_deepseek
         return summarize_deepseek(messages, from_ts, to_ts, on_progress)
     else:
-        from summarizer_local import summarize_local
+        from .local import summarize_local
         return summarize_local(messages, from_ts, to_ts, on_progress)

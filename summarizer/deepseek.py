@@ -14,7 +14,7 @@ from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
 
-from summarizer import (
+from . import (
     SYSTEM_PROMPT,
     _format_messages_for_prompt,
     _parse_response,

@@ -18,7 +18,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from summarizer import (
+from . import (
     SYSTEM_PROMPT,
     _format_messages_for_prompt,
     _named_to_numbered,
@@ -40,7 +40,7 @@ REPETITION_PENALTY = 1.1
 REPETITION_PENALTY_CONTEXT = 256
 
 SERVER_URL = "http://127.0.0.1:8321/generate"
-DEBUG_DIR = Path(__file__).parent / "tests" / "debug"
+DEBUG_DIR = Path(__file__).parent.parent / "tests" / "debug"
 
 # Cached after first check so we don't retry a dead server on every call.
 _server_checked = False
