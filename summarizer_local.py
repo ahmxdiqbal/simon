@@ -30,6 +30,14 @@ MODEL = "mlx-community/Qwen3.5-9B-MLX-4bit"
 CHUNK_SIZE = 150
 MAX_TOKENS = 8192
 REPETITION_WINDOW = 600
+PREFILL_STEP_SIZE = 4096
+
+# Sampling: small temperature + repetition penalty to prevent loops.
+# temp=0.0 is greedy (deterministic), which gets stuck in repetition.
+# A light touch keeps output coherent while letting the model escape loops.
+TEMPERATURE = 0.1
+REPETITION_PENALTY = 1.1
+REPETITION_PENALTY_CONTEXT = 256
 
 SERVER_URL = "http://127.0.0.1:8321/generate"
 DEBUG_DIR = Path(__file__).parent / "tests" / "debug"
@@ -97,6 +105,7 @@ _manager = ModelManager()
 def _generate_direct(system_prompt: str, user_content: str, max_tokens: int) -> str:
     """Generate using direct mlx_lm. Loads the model if not already cached."""
     from mlx_lm import stream_generate
+    from mlx_lm.sample_utils import make_repetition_penalty, make_sampler
 
     model, tokenizer = _manager.get()
 
@@ -110,9 +119,17 @@ def _generate_direct(system_prompt: str, user_content: str, max_tokens: int) -> 
     if prompt.rstrip().endswith("<think>"):
         prompt = prompt.rstrip() + "\n</think>\n\n"
 
+    sampler = make_sampler(temp=TEMPERATURE)
+    rep_penalty = make_repetition_penalty(
+        penalty=REPETITION_PENALTY, context_size=REPETITION_PENALTY_CONTEXT,
+    )
+
     text = ""
     for response in stream_generate(
-        model, tokenizer, prompt, max_tokens=max_tokens
+        model, tokenizer, prompt, max_tokens=max_tokens,
+        prefill_step_size=PREFILL_STEP_SIZE,
+        sampler=sampler,
+        logits_processors=[rep_penalty],
     ):
         text += response.text
         if len(text) > REPETITION_WINDOW * 2:
