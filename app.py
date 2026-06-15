@@ -1,47 +1,42 @@
 """
-FastAPI server for SiMon.
+FastAPI server for SiMon (read/serve layer).
+
+Fetching and summarization run in the GitHub Actions worker, not here. This
+app serves the dashboard, exposes the reports, manages channels, handles the
+two read actions, and triggers an on-demand refresh by dispatching the worker.
 
 Endpoints:
-  GET  /                  - serve the dashboard HTML
-  GET  /api/status        - last_read_at, channel count, cached summary metadata
-  POST /api/refresh       - SSE stream: fetch + summarize with progress updates
-  POST /api/mark-read     - set last_read_at to now
-  GET  /api/summary       - return latest cached summary
-  GET  /api/channels      - list channels
-  POST /api/channels      - add channel {"username": "@foo"}
-  DELETE /api/channels/{username} - remove channel
+  GET    /                              - dashboard HTML
+  GET    /api/status                    - cursors + unread/weekly counts
+  GET    /api/reports                   - the catch-up report + weekly reports
+  POST   /api/refresh                   - trigger the worker via GitHub dispatch
+  POST   /api/mark-read                 - clear the catch-up report
+  POST   /api/reports/{week_start}/mark-read - mark one weekly report read
+  GET    /api/channels                  - list channels
+  POST   /api/channels                  - add channel {"username": "@foo"}
+  DELETE /api/channels/{username}       - remove channel
 """
 
-import asyncio
-import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import db
-import summarizer
-import telegram_fetcher
 
 app = FastAPI(title="SiMon")
 
-# Serve static files (the frontend)
 static_path = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-
-# --- Startup ---
-
-@app.on_event("startup")
-def on_startup():
-    db.init_db()
-    # Seed last_read_at to now on first run so Refresh doesn't pull full channel history.
-    if db.get_last_read_at() is None:
-        db.set_last_read_at(datetime.now(timezone.utc))
-        print("First run: last_read_at seeded to now. Refresh will only fetch future messages.")
+# Ensure the schema exists. Idempotent; runs at import so it also covers
+# serverless runtimes that skip ASGI lifespan events.
+db.init_db()
 
 
 # --- Models ---
@@ -50,12 +45,11 @@ class ChannelAdd(BaseModel):
     username: str
 
 
-# --- Routes ---
+# --- Pages ---
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    html = (static_path / "index.html").read_text()
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=(static_path / "index.html").read_text())
 
 
 @app.get("/favicon.ico")
@@ -63,169 +57,89 @@ def favicon():
     return FileResponse(static_path / "simon-bolivar.png", media_type="image/png")
 
 
+# --- Status & reports ---
+
 @app.get("/api/status")
 def get_status():
-    last_read = db.get_last_read_at()
-    channels = db.list_channels()
-    latest = db.get_latest_summary()
-    last_refresh = db.get_state("last_refresh_at")
+    last_refresh = db.get_last_refresh_at()
+    unread = db.get_unread_report()
+    weeks = db.list_weekly_reports()
     return {
-        "last_read_at": last_read.isoformat() if last_read else None,
-        "last_refresh_at": last_refresh,
-        "channel_count": len(channels),
-        "summary_available": latest is not None,
-        "summary_created_at": latest["created_at"] if latest else None,
+        "last_refresh_at": last_refresh.isoformat() if last_refresh else None,
+        "channel_count": len(db.list_channels()),
+        "unread_available": unread is not None,
+        "unread_updated_at": unread["updated_at"] if unread else None,
+        "weekly_report_count": len(weeks),
+        "unread_week_count": sum(1 for w in weeks if w["read_at"] is None),
     }
 
 
-def _sse_event(event: str, data: dict) -> str:
-    """Format a Server-Sent Event."""
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+@app.get("/api/reports")
+def get_reports():
+    unread = db.get_unread_report()
+    weeks = db.list_weekly_reports()
+    return {
+        "unread": {
+            "data": unread["data"],
+            "updated_at": unread["updated_at"],
+        } if unread else None,
+        "weeks": [
+            {
+                "week_start": w["week_start"],
+                "data": w["data"],
+                "updated_at": w["updated_at"],
+                "read_at": w["read_at"],
+            }
+            for w in weeks
+        ],
+    }
 
 
-@app.post("/api/refresh")
-async def refresh():
-    """SSE stream: fetch messages, summarize, and stream progress updates."""
-    channels = db.list_channels()
-    if not channels:
-        raise HTTPException(status_code=400, detail="No channels configured. Add channels first.")
+# --- Refresh trigger ---
 
-    usernames = [c["username"] for c in channels]
-    last_read = db.get_last_read_at()
-    now = datetime.now(timezone.utc)
-
-    async def event_stream():
-        progress_queue: asyncio.Queue[str] = asyncio.Queue()
-        loop = asyncio.get_event_loop()
-
-        def on_progress(msg: str):
-            # Thread-safe: works from both async context and executor threads
-            loop.call_soon_threadsafe(progress_queue.put_nowait, msg)
-
-        # --- Fetch phase ---
-        fetch_task = asyncio.create_task(
-            telegram_fetcher.fetch_messages_since(usernames, last_read, on_progress)
+@app.post("/api/refresh", status_code=202)
+def trigger_refresh():
+    """Dispatch the GitHub Actions worker. Requires GITHUB_TOKEN + GITHUB_REPO."""
+    token = os.environ.get("GITHUB_TOKEN")
+    repo = os.environ.get("GITHUB_REPO")
+    if not token or not repo:
+        raise HTTPException(
+            status_code=503,
+            detail="On-demand refresh is not configured. Reports update on schedule.",
         )
-
-        # Drain progress while fetch is running
-        while not fetch_task.done():
-            try:
-                msg = await asyncio.wait_for(progress_queue.get(), timeout=0.3)
-                yield _sse_event("progress", {"message": msg})
-            except asyncio.TimeoutError:
-                pass
-
-        # Drain any remaining progress messages
-        while not progress_queue.empty():
-            msg = progress_queue.get_nowait()
-            yield _sse_event("progress", {"message": msg})
-
-        try:
-            messages = fetch_task.result()
-        except Exception as e:
-            yield _sse_event("error", {"message": f"Telegram fetch failed: {e}"})
-            return
-
-        # Cache messages
-        by_channel: dict[str, list[dict]] = {}
-        for msg in messages:
-            by_channel.setdefault(msg["channel"], []).append(
-                {"id": msg["id"], "sent_at": msg["sent_at"], "text": msg["text"]}
-            )
-        for channel, msgs in by_channel.items():
-            db.store_messages(channel, msgs)
-
-        # Fallback to SQLite cache
-        if not messages:
-            messages = db.get_messages_since(last_read)
-
-        if not messages:
-            yield _sse_event("done", {"status": "no_new_messages", "message_count": 0})
-            return
-
-        # --- Summarize phase ---
-        yield _sse_event("progress", {"message": f"Summarizing {len(messages)} messages..."})
-
-        def run_summarize():
-            return summarizer.summarize(messages, last_read, now, on_progress=on_progress)
-
-        summarize_task = asyncio.get_event_loop().run_in_executor(None, run_summarize)
-
-        # Drain progress while summarize is running
-        while not summarize_task.done():
-            try:
-                msg = await asyncio.wait_for(progress_queue.get(), timeout=0.3)
-                yield _sse_event("progress", {"message": msg})
-            except asyncio.TimeoutError:
-                pass
-
-        while not progress_queue.empty():
-            msg = progress_queue.get_nowait()
-            yield _sse_event("progress", {"message": msg})
-
-        try:
-            summary = await summarize_task
-        except Exception as e:
-            yield _sse_event("error", {"message": f"Summarization failed: {e}"})
-            return
-
-        # Update channel titles
-        seen_titles: dict[str, str] = {}
-        for msg in messages:
-            if msg["channel"] not in seen_titles and msg.get("channel_title"):
-                seen_titles[msg["channel"]] = msg["channel_title"]
-        for username, title in seen_titles.items():
-            db.update_channel_title(username, title)
-
-        db.store_summary(last_read, now, summary)
-        db.set_state("last_refresh_at", now.isoformat())
-
-        yield _sse_event("done", {"status": "ok", **summary})
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    resp = httpx.post(
+        f"https://api.github.com/repos/{repo}/dispatches",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        },
+        json={"event_type": "refresh"},
+        timeout=10,
+    )
+    if resp.status_code >= 300:
+        raise HTTPException(status_code=502, detail=f"GitHub dispatch failed: {resp.status_code}")
+    return {"status": "triggered"}
 
 
-@app.get("/api/summary")
-def get_summary():
-    latest = db.get_latest_summary()
-    if latest is None:
-        return {"status": "no_summary", "nations": {}}
-    return {"status": "ok", **latest["data"], "created_at": latest["created_at"]}
-
+# --- Read actions ---
 
 @app.post("/api/mark-read")
 def mark_read():
-    # Use last_refresh_at so the next fetch starts from when we last refreshed,
-    # not from when the button was clicked. This prevents the gap between
-    # refresh and mark-as-read from being silently dropped.
-    last_refresh = db.get_state("last_refresh_at")
-    ts = datetime.fromisoformat(last_refresh) if last_refresh else datetime.now(timezone.utc)
-    db.set_last_read_at(ts)
-    return {"status": "ok", "marked_at": ts.isoformat()}
+    """Clear the catch-up report. Weekly reports are unaffected."""
+    db.clear_unread_report()
+    last_refresh = db.get_last_refresh_at()
+    db.set_last_read_at(last_refresh or datetime.now(timezone.utc))
+    return {"status": "ok"}
 
 
-class SetLastRead(BaseModel):
-    timestamp: str  # ISO format or "now"
+@app.post("/api/reports/{week_start}/mark-read")
+def mark_week_read(week_start: str):
+    if not db.mark_weekly_report_read(week_start):
+        raise HTTPException(status_code=404, detail="Weekly report not found.")
+    return {"status": "ok"}
 
 
-@app.post("/api/set-last-read")
-def set_last_read(body: SetLastRead):
-    """Manually set last_read_at to a specific timestamp or relative offset."""
-    raw = body.timestamp.strip()
-    if raw.lower() == "now":
-        ts = datetime.now(timezone.utc)
-    else:
-        try:
-            # Normalize: replace trailing Z with +00:00 for fromisoformat compat
-            normalized = raw.replace("Z", "+00:00").replace("z", "+00:00")
-            ts = datetime.fromisoformat(normalized)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid timestamp. Use ISO format or 'now'.")
-    db.set_last_read_at(ts)
-    return {"status": "ok", "last_read_at": ts.isoformat()}
-
+# --- Channels ---
 
 @app.get("/api/channels")
 def get_channels():
@@ -243,8 +157,7 @@ def add_channel(body: ChannelAdd):
 
 @app.delete("/api/channels/{username}")
 def remove_channel(username: str):
-    removed = db.remove_channel(username)
-    if not removed:
+    if not db.remove_channel(username):
         raise HTTPException(status_code=404, detail="Channel not found.")
     return {"status": "ok"}
 

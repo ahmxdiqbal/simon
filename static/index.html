@@ -113,7 +113,10 @@
     }
 
     .nation-nav-item {
-      display: block;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       padding: 6px 10px;
       border-radius: 5px;
       color: var(--text-dim);
@@ -121,6 +124,9 @@
       cursor: pointer;
       text-decoration: none;
       transition: background 0.1s, color 0.1s;
+    }
+
+    .nation-nav-item .nav-text {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -134,6 +140,14 @@
     .nation-nav-item.active {
       background: var(--accent-dim);
       color: var(--accent);
+    }
+
+    .unread-dot {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
     }
 
     .channel-item {
@@ -172,6 +186,20 @@
     /* Content area */
     .content {
       padding: 28px 40px;
+    }
+
+    /* Report title bar */
+    .report-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .report-title {
+      font-size: 22px;
+      font-weight: 600;
     }
 
     /* Status bar */
@@ -406,7 +434,7 @@
 <div class="loading-overlay" id="loading">
   <div class="loading-panel">
     <div class="spinner"></div>
-    <div class="loading-text" id="loading-text">Fetching messages...</div>
+    <div class="loading-text" id="loading-text">Loading...</div>
   </div>
 </div>
 
@@ -420,16 +448,7 @@
   <div class="header-actions">
     <span id="cost-badge" style="display:none;font-size:12px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 10px;"></span>
     <button class="btn-ghost" onclick="openChannelManager()">Channels</button>
-    <select id="window-select" class="btn-ghost" style="font-size:12px;padding:6px 8px;background:var(--surface);color:var(--text-dim);border:1px solid var(--border);border-radius:6px;cursor:pointer;" onchange="setFetchWindow(this.value)">
-      <option value="" disabled selected>Fetch window</option>
-      <option value="1">Last 1h</option>
-      <option value="6">Last 6h</option>
-      <option value="24">Last 24h</option>
-      <option value="72">Last 3d</option>
-      <option value="168">Last 7d</option>
-      <option value="custom">Custom...</option>
-    </select>
-    <button class="btn-success" id="mark-read-btn" onclick="markRead()">Mark as Read</button>
+    <button class="btn-success" id="mark-read-btn" onclick="markRead()" style="display:none;">Mark catch-up read</button>
     <button class="btn-primary" id="refresh-btn" onclick="refresh()">Refresh</button>
   </div>
 </header>
@@ -437,20 +456,29 @@
 <main>
   <aside>
     <div class="sidebar-section">
+      <div class="sidebar-label">Reports</div>
+      <div id="report-nav"></div>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-label">Nations</div>
       <div id="nation-nav"></div>
     </div>
   </aside>
 
   <div class="content">
+    <div class="report-bar" id="report-bar" style="display:none;">
+      <div class="report-title" id="report-title"></div>
+      <button class="btn-success btn-sm" id="week-read-btn" onclick="markActiveWeekRead()" style="display:none;">Mark week read</button>
+    </div>
+
     <div id="status-bar" class="status-bar" style="display:none">
       <div class="status-info" id="status-info"></div>
     </div>
 
     <div id="summary-content">
       <div class="empty-state">
-        <h2>No summary yet</h2>
-        <p>Add your Telegram channels, then click <strong>Refresh</strong> to generate your first summary.</p>
+        <h2>No reports yet</h2>
+        <p>Add your Telegram channels, then click <strong>Refresh</strong>. Reports also build automatically on a schedule.</p>
       </div>
     </div>
   </div>
@@ -476,54 +504,130 @@
 </div>
 
 <script>
-  let currentSummary = null;
+  let reports = { unread: null, weeks: [] };
+  let active = null;  // { kind: 'unread' | 'week', key: string }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // --- Init ---
   async function init() {
     await loadStatus();
-    await loadSummary();
+    await loadReports();
   }
 
-  // --- Status ---
+  // --- Status (header) ---
   async function loadStatus() {
     try {
       const s = await api('/api/status');
-      updateHeaderMeta(s);
+      const refresh = s.last_refresh_at ? 'Updated ' + formatDate(s.last_refresh_at) : 'Never refreshed';
+      const unread = s.unread_week_count
+        ? `  ·  ${s.unread_week_count} unread week${s.unread_week_count !== 1 ? 's' : ''}`
+        : '';
+      document.getElementById('header-meta').textContent =
+        `${refresh}  ·  ${s.channel_count} channel${s.channel_count !== 1 ? 's' : ''}${unread}`;
     } catch(e) {
       document.getElementById('header-meta').textContent = 'Could not load status';
     }
   }
 
-  function updateHeaderMeta(s) {
-    const lastRead = s.last_read_at
-      ? 'Last read: ' + formatDate(s.last_read_at)
-      : 'Never marked as read';
-    document.getElementById('header-meta').textContent =
-      `${lastRead}  ·  ${s.channel_count} channel${s.channel_count !== 1 ? 's' : ''}`;
-
-    // If last_read_at >= last_refresh_at, the user already marked as read
-    if (s.last_read_at && s.last_refresh_at && s.last_read_at >= s.last_refresh_at) {
-      const btn = document.getElementById('mark-read-btn');
-      btn.textContent = 'Read \u2713';
-      btn.className = 'btn-marked';
-      btn.onclick = null;
-    }
-  }
-
-  // --- Summary ---
-  async function loadSummary() {
+  // --- Reports ---
+  async function loadReports() {
     try {
-      const data = await api('/api/summary');
-      if (data.status === 'no_summary') return;
-      renderSummary(data);
-    } catch(e) {}
+      reports = await api('/api/reports');
+    } catch(e) {
+      showToast('Could not load reports.', 'error');
+      return;
+    }
+    buildReportNav();
+
+    // Preserve the current selection if it still exists, else pick a default.
+    if (!active || !reportExists(active)) {
+      if (reports.unread) active = { kind: 'unread' };
+      else if (reports.weeks.length) active = { kind: 'week', key: reports.weeks[0].week_start };
+      else active = null;
+    }
+    renderActive();
   }
 
-  function renderSummary(data) {
-    currentSummary = data;
+  function reportExists(sel) {
+    if (sel.kind === 'unread') return reports.unread != null;
+    return reports.weeks.some(w => w.week_start === sel.key);
+  }
+
+  function buildReportNav() {
+    const nav = document.getElementById('report-nav');
+    const items = [];
+
+    if (reports.unread) {
+      items.push(navItem('Since last read', { kind: 'unread' }, true));
+    }
+    for (const w of reports.weeks) {
+      items.push(navItem(weekLabel(w.week_start), { kind: 'week', key: w.week_start }, w.read_at === null));
+    }
+
+    nav.innerHTML = items.length
+      ? items.join('')
+      : '<div style="font-size:12px;color:var(--text-dim);padding:4px 10px;">No reports yet</div>';
+  }
+
+  function navItem(label, sel, unread) {
+    const isActive = active && active.kind === sel.kind &&
+      (sel.kind === 'unread' || active.key === sel.key);
+    const id = sel.kind === 'unread' ? 'unread' : sel.key;
+    const dot = unread ? '<span class="unread-dot"></span>' : '';
+    return `<a class="nation-nav-item ${isActive ? 'active' : ''}" onclick="selectReport('${sel.kind}','${id}')">` +
+      `<span class="nav-text">${escHtml(label)}</span>${dot}</a>`;
+  }
+
+  function selectReport(kind, key) {
+    active = kind === 'unread' ? { kind: 'unread' } : { kind: 'week', key };
+    buildReportNav();
+    renderActive();
+  }
+
+  function activeData() {
+    if (!active) return null;
+    if (active.kind === 'unread') return reports.unread ? reports.unread.data : null;
+    const w = reports.weeks.find(x => x.week_start === active.key);
+    return w ? w.data : null;
+  }
+
+  function renderActive() {
+    const bar = document.getElementById('report-bar');
+    const title = document.getElementById('report-title');
+    const weekBtn = document.getElementById('week-read-btn');
+    const markBtn = document.getElementById('mark-read-btn');
+
+    // Catch-up mark-read button only shows when a catch-up report exists.
+    markBtn.style.display = reports.unread ? '' : 'none';
+
+    const data = activeData();
+    if (!data) {
+      bar.style.display = 'none';
+      document.getElementById('nation-nav').innerHTML = '';
+      document.getElementById('status-bar').style.display = 'none';
+      document.getElementById('cost-badge').style.display = 'none';
+      document.getElementById('summary-content').innerHTML =
+        `<div class="empty-state"><h2>No reports yet</h2><p>Add channels, then click <strong>Refresh</strong>. Reports also build on a schedule.</p></div>`;
+      return;
+    }
+
+    bar.style.display = 'flex';
+    if (active.kind === 'unread') {
+      title.textContent = 'Since last read';
+      weekBtn.style.display = 'none';
+    } else {
+      const w = reports.weeks.find(x => x.week_start === active.key);
+      title.textContent = weekLabel(active.key);
+      weekBtn.style.display = (w && w.read_at === null) ? '' : 'none';
+    }
+
+    renderReport(data);
+  }
+
+  function renderReport(data) {
     const events = data.events || [];
 
-    // Derive sorted nation list from events
     const nationSet = new Set();
     events.forEach(e => (e.countries || []).forEach(c => nationSet.add(c)));
     const nationNames = Array.from(nationSet).sort();
@@ -532,9 +636,9 @@
     const nav = document.getElementById('nation-nav');
     if (events.length) {
       nav.innerHTML =
-        `<a class="nation-nav-item active" onclick="showPanel('__all__', this)">All</a>` +
+        `<a class="nation-nav-item active" onclick="showPanel('__all__', this)"><span class="nav-text">All</span></a>` +
         nationNames.map(n =>
-          `<a class="nation-nav-item" onclick="showPanel('${escHtml(slugify(n))}', this)">${escHtml(n)}</a>`
+          `<a class="nation-nav-item" onclick="showPanel('${escHtml(slugify(n))}', this)"><span class="nav-text">${escHtml(n)}</span></a>`
         ).join('');
     } else {
       nav.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 10px;">No nations yet</div>';
@@ -562,12 +666,14 @@
       document.getElementById('status-info').innerHTML =
         `<strong>${data.message_count || '?'} messages</strong> · ${events.length} events · ${nationNames.length} nations · ${fromStr} → ${toStr}${costStr}`;
       document.getElementById('status-bar').style.display = 'flex';
+    } else {
+      document.getElementById('status-bar').style.display = 'none';
     }
 
     // Main content
     const content = document.getElementById('summary-content');
     if (events.length === 0) {
-      content.innerHTML = `<div class="empty-state"><h2>No events found</h2><p>No geopolitical events were identified in the new messages.</p></div>`;
+      content.innerHTML = `<div class="empty-state"><h2>No events found</h2><p>No geopolitical events were identified for this period.</p></div>`;
       return;
     }
 
@@ -578,7 +684,6 @@
       ? `<div class="period-label">Coverage: ${fromStr ? fromStr + ' → ' : ''}${toStr || ''}</div>`
       : '';
 
-    // All panel
     let html = `
       <div class="panel active" id="panel-__all__">
         ${periodHtml}
@@ -592,7 +697,6 @@
       </div>
     `;
 
-    // Per-nation panels — filter events client-side
     for (const nation of nationNames) {
       const nationEvents = events.filter(e => (e.countries || []).includes(nation));
       html += `
@@ -613,7 +717,6 @@
   }
 
   function normSource(s) {
-    // Handle both old format (string) and new format ({name, url})
     if (typeof s === 'string') return { name: s, url: null };
     return { name: s.name || '', url: s.url || null };
   }
@@ -639,7 +742,7 @@
 
   function renderCitedText(text, sources) {
     const escaped = escHtml(text);
-    let result = escaped.replace(/\[(\d+)\]/g, (match, num) => {
+    return escaped.replace(/\[(\d+)\]/g, (match, num) => {
       const idx = parseInt(num, 10) - 1;
       const src = sources[idx];
       if (!src) return match;
@@ -649,127 +752,80 @@
       }
       return `<sup class="cite">[${num}]${tip}</sup>`;
     });
-    return result;
   }
 
   function showPanel(id, navEl) {
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.nation-nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('#nation-nav .nation-nav-item').forEach(a => a.classList.remove('active'));
     const panel = document.getElementById('panel-' + id);
     if (panel) panel.classList.add('active');
     if (navEl) navEl.classList.add('active');
   }
 
   // --- Actions ---
-  function refresh() {
-    resetMarkReadBtn();
-    showLoading('Connecting...');
+  async function refresh() {
     disableActions(true);
-
-    // Use fetch with streaming to read SSE from a POST endpoint
-    fetch('/api/refresh', { method: 'POST' }).then(response => {
-      if (!response.ok) {
-        return response.json().then(err => { throw new Error(err.detail || response.statusText); });
+    showLoading('Triggering refresh...');
+    try {
+      const res = await fetch('/api/refresh', { method: 'POST' });
+      if (res.status === 503) {
+        const err = await res.json();
+        showToast(err.detail, 'error');
+        return;
       }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      function processChunk({ done, value }) {
-        if (done) {
-          hideLoading();
-          disableActions(false);
-          loadStatus();
-          return;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete line in buffer
-
-        let eventType = null;
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7).trim();
-          } else if (line.startsWith('data: ') && eventType) {
-            const data = JSON.parse(line.slice(6));
-            if (eventType === 'progress') {
-              document.getElementById('loading-text').textContent = data.message;
-            } else if (eventType === 'error') {
-              showToast('Refresh failed: ' + data.message, 'error');
-              hideLoading();
-              disableActions(false);
-            } else if (eventType === 'done') {
-              if (data.status === 'no_new_messages') {
-                showToast('No new messages since last read.', 'success');
-              } else {
-                renderSummary(data);
-                showToast('Summary updated.', 'success');
-              }
-              hideLoading();
-              disableActions(false);
-              loadStatus();
-            }
-            eventType = null;
-          }
-        }
-
-        return reader.read().then(processChunk);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || res.statusText);
       }
-
-      return reader.read().then(processChunk);
-    }).catch(e => {
+      const before = await api('/api/status');
+      await pollForUpdate(before);
+    } catch(e) {
       showToast('Refresh failed: ' + e.message, 'error');
+    } finally {
       hideLoading();
       disableActions(false);
-    });
+    }
+  }
+
+  async function pollForUpdate(before, attempts = 40) {
+    for (let i = 0; i < attempts; i++) {
+      await sleep(5000);
+      showLoading(`Worker running on GitHub Actions... (${(i + 1) * 5}s)`);
+      let s;
+      try { s = await api('/api/status'); } catch(e) { continue; }
+      if (s.last_refresh_at !== before.last_refresh_at) {
+        await loadStatus();
+        await loadReports();
+        showToast('Reports updated.', 'success');
+        return;
+      }
+    }
+    showToast('Still running. Reports will update once the worker finishes.', '');
+    await loadStatus();
+    await loadReports();
   }
 
   async function markRead() {
-    const btn = document.getElementById('mark-read-btn');
     try {
       await api('/api/mark-read', 'POST');
+      active = null;  // catch-up is gone; fall back to a default report
       await loadStatus();
-      btn.textContent = 'Read ✓';
-      btn.className = 'btn-marked';
-      btn.onclick = null;
+      await loadReports();
+      showToast('Catch-up cleared.', 'success');
     } catch(e) {
-      showToast('Failed to mark as read.', 'error');
+      showToast('Failed to mark catch-up read.', 'error');
     }
   }
 
-  function resetMarkReadBtn() {
-    const btn = document.getElementById('mark-read-btn');
-    btn.textContent = 'Mark as Read';
-    btn.className = 'btn-success';
-    btn.onclick = markRead;
-  }
-
-  async function setFetchWindow(value) {
-    const select = document.getElementById('window-select');
-    let ts;
-    if (value === 'custom') {
-      const input = prompt('Enter datetime (YYYY-MM-DD HH:MM) in UTC:');
-      select.selectedIndex = 0;
-      if (!input) return;
-      ts = input.trim();
-      // Append seconds and timezone if needed
-      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(ts)) ts += ':00+00:00';
-      else if (/^\d{4}-\d{2}-\d{2}$/.test(ts)) ts += 'T00:00:00+00:00';
-    } else {
-      const hours = parseInt(value);
-      const d = new Date(Date.now() - hours * 3600 * 1000);
-      ts = d.toISOString();
-      select.selectedIndex = 0;
-    }
+  async function markActiveWeekRead() {
+    if (!active || active.kind !== 'week') return;
     try {
-      await api('/api/set-last-read', 'POST', { timestamp: ts });
+      await api('/api/reports/' + active.key + '/mark-read', 'POST');
       await loadStatus();
-      resetMarkReadBtn();
-      showToast(`Fetch window set to ${value === 'custom' ? ts : 'last ' + value + 'h'}`, 'success');
+      await loadReports();
+      showToast('Week marked read.', 'success');
     } catch(e) {
-      showToast('Failed to set fetch window: ' + e.message, 'error');
+      showToast('Failed to mark week read.', 'error');
     }
   }
 
@@ -806,6 +862,7 @@
       await api('/api/channels', 'POST', { username });
       input.value = '';
       await refreshChannelList();
+      await loadStatus();
       showToast(`Added @${username.replace('@','')}`, 'success');
     } catch(e) {
       showToast('Failed to add channel: ' + e.message, 'error');
@@ -816,6 +873,7 @@
     try {
       await api('/api/channels/' + username, 'DELETE');
       await refreshChannelList();
+      await loadStatus();
       showToast(`Removed @${username}`, 'success');
     } catch(e) {
       showToast('Failed to remove channel.', 'error');
@@ -832,6 +890,12 @@
       throw new Error(err.detail || res.statusText);
     }
     return res.json();
+  }
+
+  function weekLabel(weekStart) {
+    // weekStart is an ISO date "YYYY-MM-DD" (UTC Sunday).
+    const [y, m, d] = weekStart.split('-');
+    return `Week of ${m}/${d}/${y}`;
   }
 
   function formatDate(iso) {

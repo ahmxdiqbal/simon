@@ -121,12 +121,50 @@ def _build_message_index(messages: list[dict]) -> dict[str, list[dict]]:
     return index
 
 
-def _named_to_numbered(events: list[dict], messages: list[dict]) -> list[dict]:
+def _numbered_to_named(events: list[dict]) -> list[dict]:
+    """Inverse of _named_to_numbered: expand [N] back to [SourceName].
+
+    Feeds a stored report (numbered citations + sources list) back into the
+    model for incremental merging.
+    """
+    result = []
+    for event in events:
+        sources = event.get("sources", [])
+
+        def replace(m):
+            n = int(m.group(1))
+            if 1 <= n <= len(sources):
+                return f"[{sources[n - 1]['name']}]"
+            return ""
+
+        text = re.sub(r'\[(\d+)\]', replace, event.get("text", ""))
+        result.append({"text": text, "countries": event.get("countries", [])})
+    return result
+
+
+def _prior_source_map(events: list[dict]) -> dict[str, str]:
+    """Map source name -> url from already-resolved events, for carry-forward."""
+    mapping: dict[str, str] = {}
+    for event in events:
+        for source in event.get("sources", []):
+            name, url = source.get("name"), source.get("url")
+            if name and url and name not in mapping:
+                mapping[name] = url
+    return mapping
+
+
+def _named_to_numbered(
+    events: list[dict],
+    messages: list[dict],
+    prior_sources: dict[str, str] | None = None,
+) -> list[dict]:
     """Convert inline named citations [SourceName] to numbered [N] with source objects.
 
     Each source becomes {"name": "...", "url": "..."} where url may be null.
     For @channel sources: url is the Telegram post link (t.me/channel/msgid).
     For news org sources: url is extracted from the matching Telegram message if available.
+    prior_sources carries forward urls for citations not resolvable from `messages`
+    (incremental merges, where the old messages are no longer in hand).
     """
     msg_index = _build_message_index(messages)
 
@@ -220,6 +258,9 @@ def _named_to_numbered(events: list[dict], messages: list[dict]) -> list[dict]:
             else:
                 url = _match_source_url(name, all_urls)
 
+            if url is None and prior_sources:
+                url = prior_sources.get(name)
+
             sources_list.append({"name": name, "url": url})
 
         # Replace named citations with numbered ones
@@ -257,3 +298,22 @@ def summarize(
     else:
         from .local import summarize_local
         return summarize_local(messages, from_ts, to_ts, on_progress)
+
+
+def summarize_incremental(
+    prior: dict,
+    new_messages: list[dict],
+    to_ts: datetime,
+    on_progress: callable | None = None,
+) -> dict:
+    """Merge new messages into an existing report. Returns the updated report.
+
+    Folds new information into existing events and appends genuinely new ones,
+    carrying forward citation urls already resolved in the prior report.
+    """
+    if not new_messages:
+        return prior
+    if BACKEND == "deepseek":
+        from .deepseek import summarize_incremental_deepseek
+        return summarize_incremental_deepseek(prior, new_messages, to_ts, on_progress)
+    raise NotImplementedError("Incremental summarization is implemented for the DeepSeek backend only.")

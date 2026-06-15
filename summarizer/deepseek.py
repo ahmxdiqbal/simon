@@ -19,6 +19,8 @@ from . import (
     _format_messages_for_prompt,
     _parse_response,
     _named_to_numbered,
+    _numbered_to_named,
+    _prior_source_map,
 )
 
 load_dotenv()
@@ -46,6 +48,16 @@ def _compute_cost(input_tokens: int, output_tokens: int) -> dict:
         "input_cost_usd": round(input_cost, 6),
         "output_cost_usd": round(output_cost, 6),
         "total_cost_usd": round(input_cost + output_cost, 6),
+    }
+
+
+def _add_cost(prior: dict | None, this_run: dict) -> dict:
+    """Sum a prior cumulative cost with this run's cost."""
+    if not prior:
+        return this_run
+    return {
+        k: round(prior.get(k, 0) + this_run.get(k, 0), 6) if "cost" in k else prior.get(k, 0) + this_run.get(k, 0)
+        for k in this_run
     }
 
 
@@ -168,5 +180,73 @@ def summarize_deepseek(
         "events": numbered_events,
         "message_count": len(messages),
         "cost": _compute_cost(total_input_tokens, total_output_tokens),
+        "model": MODEL,
+    }
+
+
+MERGE_INSTRUCTION = """You are updating an existing summary with newly arrived messages.
+
+Below is the CURRENT SUMMARY as a JSON array of events (text with inline named citations like [Reuters] or [@channel]), followed by a batch of NEW MESSAGES.
+
+Update the summary:
+- Fold new details into the matching existing event when they describe the same real-world event (e.g. a rising casualty count, a confirmed location, an official response).
+- Append a new event only for a genuinely new story.
+- Keep every existing event and its citations unless new messages make it redundant by merging.
+- Add citations from the new messages, following the same source-priority and format rules.
+- Apply the same compression rules: do not let the list sprawl; merge related sub-stories.
+
+Return ONLY the full updated JSON in the same format: {"events": [{"text": "...", "countries": [...]}]}"""
+
+
+def summarize_incremental_deepseek(
+    prior: dict,
+    new_messages: list[dict],
+    to_ts: datetime,
+    on_progress: callable | None = None,
+) -> dict:
+    """Merge new messages into a prior report via a single DeepSeek call."""
+    if not new_messages:
+        return prior
+
+    prior_events = prior.get("events", [])
+    named_prior = _numbered_to_named(prior_events)
+    prior_sources = _prior_source_map(prior_events)
+
+    if on_progress:
+        on_progress(f"Merging {len(new_messages)} new messages into the existing report...")
+
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=8192,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    MERGE_INSTRUCTION
+                    + "\n\nCURRENT SUMMARY:\n"
+                    + json.dumps({"events": named_prior}, ensure_ascii=False)
+                    + f"\n\nNEW MESSAGES ({len(new_messages)}):\n"
+                    + _format_messages_for_prompt(new_messages)
+                ),
+            },
+        ],
+    )
+    this_cost = _compute_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+    merged_events = _parse_response(response.choices[0].message.content).get("events", [])
+
+    if on_progress:
+        on_progress(f"Linking {len(merged_events)} events to sources...")
+    numbered = _named_to_numbered(merged_events, new_messages, prior_sources=prior_sources)
+
+    prior_period = prior.get("period", {})
+    return {
+        "period": {
+            "from": prior_period.get("from"),
+            "to": to_ts.isoformat(),
+        },
+        "events": numbered,
+        "message_count": prior.get("message_count", 0) + len(new_messages),
+        "cost": _add_cost(prior.get("cost"), this_cost),
         "model": MODEL,
     }

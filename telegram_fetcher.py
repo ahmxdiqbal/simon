@@ -19,11 +19,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
+from telethon.sessions import StringSession
 from telethon.tl.types import Message
 
 load_dotenv()
 
 SESSION_PATH = Path(__file__).parent / "geopolitics.session"
+SESSION_STRING = os.environ.get("TELEGRAM_SESSION")
 API_ID = int(os.environ["TELEGRAM_API_ID"])
 API_HASH = os.environ["TELEGRAM_API_HASH"]
 
@@ -37,6 +39,10 @@ _entity_cache: dict[str, object] = {}
 
 
 def _make_client() -> TelegramClient:
+    # Prefer an env-provided StringSession (serverless / CI); fall back to the
+    # local session file for first-time auth on a developer machine.
+    if SESSION_STRING:
+        return TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     return TelegramClient(str(SESSION_PATH), API_ID, API_HASH)
 
 
