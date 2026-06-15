@@ -277,18 +277,16 @@ def summarize(
     messages: list[dict],
     from_ts: datetime | None,
     to_ts: datetime,
-    on_progress: callable | None = None,
 ) -> dict:
     """Summarize a batch of messages into a fresh report."""
     from .deepseek import summarize_deepseek
-    return summarize_deepseek(messages, from_ts, to_ts, on_progress)
+    return summarize_deepseek(messages, from_ts, to_ts)
 
 
 def summarize_incremental(
     prior: dict,
     new_messages: list[dict],
     to_ts: datetime,
-    on_progress: callable | None = None,
 ) -> dict:
     """Merge new messages into an existing report. Returns the updated report.
 
@@ -298,4 +296,4 @@ def summarize_incremental(
     if not new_messages:
         return prior
     from .deepseek import summarize_incremental_deepseek
-    return summarize_incremental_deepseek(prior, new_messages, to_ts, on_progress)
+    return summarize_incremental_deepseek(prior, new_messages, to_ts)

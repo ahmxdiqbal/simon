@@ -79,61 +79,28 @@ async def authenticate() -> None:
 async def fetch_messages_since(
     usernames: list[str],
     since: datetime | None,
-    on_progress: callable | None = None,
 ) -> list[dict]:
-    """
-    Fetch messages from all channels posted after `since`.
-    Channels are fetched in parallel. Calls on_progress with status updates.
-    Returns list of dicts sorted chronologically.
-    """
+    """Fetch messages from all channels posted after `since`, sorted chronologically."""
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)
 
     client = await _get_client()
-    total_fetched = 0
-    channels_done = 0
     total_channels = len(usernames)
-
-    if on_progress:
-        on_progress(f"Fetching {total_channels} channels...")
+    print(f"Fetching {total_channels} channels...")
 
     async def fetch_one(username: str) -> list[dict]:
-        nonlocal total_fetched, channels_done
         try:
-            msgs = await _fetch_channel(client, username, since)
-            channels_done += 1
-            total_fetched += len(msgs)
-            if on_progress:
-                on_progress(
-                    f"@{username}: {len(msgs)} msgs "
-                    f"({channels_done}/{total_channels} channels, {total_fetched} total)"
-                )
-            return msgs
+            return await _fetch_channel(client, username, since)
         except FloodWaitError as e:
-            if on_progress:
-                on_progress(f"@{username}: rate limited, waiting {e.seconds}s...")
+            print(f"@{username}: rate limited, waiting {e.seconds}s...")
             await asyncio.sleep(e.seconds)
             try:
-                msgs = await _fetch_channel(client, username, since)
-                channels_done += 1
-                total_fetched += len(msgs)
-                if on_progress:
-                    on_progress(
-                        f"@{username}: {len(msgs)} msgs "
-                        f"({channels_done}/{total_channels} channels, {total_fetched} total)"
-                    )
-                return msgs
+                return await _fetch_channel(client, username, since)
             except Exception as retry_err:
-                channels_done += 1
                 print(f"  Skipping @{username} after retry: {retry_err}")
-                if on_progress:
-                    on_progress(f"@{username}: skipped ({retry_err})")
                 return []
         except Exception as e:
-            channels_done += 1
             print(f"  Skipping @{username}: {e}")
-            if on_progress:
-                on_progress(f"@{username}: skipped ({e})")
             return []
 
     results = await asyncio.gather(*[fetch_one(u) for u in usernames])
@@ -141,12 +108,9 @@ async def fetch_messages_since(
     all_messages: list[dict] = []
     for channel_msgs in results:
         all_messages.extend(channel_msgs)
-
     all_messages.sort(key=lambda m: m["sent_at"])
 
-    if on_progress:
-        on_progress(f"Fetched {len(all_messages)} messages from {total_channels} channels")
-
+    print(f"Fetched {len(all_messages)} messages from {total_channels} channels")
     return all_messages
 
 
@@ -188,9 +152,9 @@ async def _fetch_channel(
     return messages
 
 
-def run_fetch(usernames: list[str], since: datetime | None, on_progress=None) -> list[dict]:
+def run_fetch(usernames: list[str], since: datetime | None) -> list[dict]:
     """Synchronous wrapper for use outside async contexts."""
-    return asyncio.run(fetch_messages_since(usernames, since, on_progress))
+    return asyncio.run(fetch_messages_since(usernames, since))
 
 
 def run_authenticate() -> None:

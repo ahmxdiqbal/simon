@@ -100,7 +100,6 @@ def summarize_deepseek(
     messages: list[dict],
     from_ts: datetime | None,
     to_ts: datetime,
-    on_progress: callable | None = None,
 ) -> dict:
     """Extract events via DeepSeek API. Chunks large message sets."""
     if not messages:
@@ -113,17 +112,14 @@ def summarize_deepseek(
         }
 
     chunks = [messages[i : i + CHUNK_SIZE] for i in range(0, len(messages), CHUNK_SIZE)]
-
-    if on_progress:
-        on_progress(f"Processing {len(messages)} messages in {len(chunks)} chunk(s)...")
+    print(f"Processing {len(messages)} messages in {len(chunks)} chunk(s)...")
 
     all_events: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
 
     def _call_chunk(i: int, chunk: list[dict]):
-        if on_progress:
-            on_progress(f"Sending chunk {i + 1}/{len(chunks)} to DeepSeek...")
+        print(f"Sending chunk {i + 1}/{len(chunks)} to DeepSeek...")
         formatted = _format_messages_for_prompt(chunk)
         chunk_from = chunk[0]["sent_at"]
         chunk_to = chunk[-1]["sent_at"]
@@ -162,14 +158,12 @@ def summarize_deepseek(
                 all_events.extend(parsed.get("events", []))
 
     if len(chunks) > 1:
-        if on_progress:
-            on_progress("Deduplicating events across chunks...")
+        print("Deduplicating events across chunks...")
         all_events, total_input_tokens, total_output_tokens = _dedup_events(
             all_events, total_input_tokens, total_output_tokens
         )
 
-    if on_progress:
-        on_progress(f"Linking {len(all_events)} events to sources...")
+    print(f"Linking {len(all_events)} events to sources...")
     numbered_events = _named_to_numbered(all_events, messages)
 
     return {
@@ -202,7 +196,6 @@ def summarize_incremental_deepseek(
     prior: dict,
     new_messages: list[dict],
     to_ts: datetime,
-    on_progress: callable | None = None,
 ) -> dict:
     """Merge new messages into a prior report via a single DeepSeek call."""
     if not new_messages:
@@ -212,8 +205,7 @@ def summarize_incremental_deepseek(
     named_prior = _numbered_to_named(prior_events)
     prior_sources = _prior_source_map(prior_events)
 
-    if on_progress:
-        on_progress(f"Merging {len(new_messages)} new messages into the existing report...")
+    print(f"Merging {len(new_messages)} new messages into the existing report...")
 
     response = client.chat.completions.create(
         model=MODEL,
@@ -235,8 +227,7 @@ def summarize_incremental_deepseek(
     this_cost = _compute_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
     merged_events = _parse_response(response.choices[0].message.content).get("events", [])
 
-    if on_progress:
-        on_progress(f"Linking {len(merged_events)} events to sources...")
+    print(f"Linking {len(merged_events)} events to sources...")
     numbered = _named_to_numbered(merged_events, new_messages, prior_sources=prior_sources)
 
     prior_period = prior.get("period", {})
