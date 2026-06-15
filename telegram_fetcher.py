@@ -1,12 +1,11 @@
 """
 Telegram channel message fetcher using Telethon (User API).
 
-Authentication: on first run, prompts for phone + OTP and saves a session file.
-Subsequent runs use the saved session silently.
+Authentication: uses a StringSession from TELEGRAM_SESSION, or a local session
+file for first-time auth on a developer machine (run this module directly).
 
-The client connects once and stays connected for the lifetime of the process.
-Entity resolution is cached so repeated fetches don't re-resolve channels.
-Channel fetches run in parallel via asyncio.gather.
+One-shot: each call opens a client, fetches all channels in parallel, and
+disconnects. Suits the per-run worker process; no persistent connection.
 """
 
 from __future__ import annotations
@@ -31,12 +30,6 @@ API_HASH = os.environ["TELEGRAM_API_HASH"]
 
 MAX_PER_CHANNEL = 2000
 
-# --- Persistent client and entity cache ---
-
-_client: TelegramClient | None = None
-_client_lock: asyncio.Lock | None = None
-_entity_cache: dict[str, object] = {}
-
 
 def _make_client() -> TelegramClient:
     # Prefer an env-provided StringSession (serverless / CI); fall back to the
@@ -44,29 +37,6 @@ def _make_client() -> TelegramClient:
     if SESSION_STRING:
         return TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     return TelegramClient(str(SESSION_PATH), API_ID, API_HASH)
-
-
-async def _get_client() -> TelegramClient:
-    """Return a persistent, connected TelegramClient."""
-    global _client, _client_lock
-    if _client_lock is None:
-        _client_lock = asyncio.Lock()
-    async with _client_lock:
-        if _client is None or not _client.is_connected():
-            _client = _make_client()
-            await _client.connect()
-            if not await _client.is_user_authorized():
-                raise RuntimeError("Telegram session not authorized. Run: python telegram_fetcher.py")
-    return _client
-
-
-async def _resolve_entity(client: TelegramClient, username: str):
-    """Resolve a channel entity, using cache to avoid repeated API calls."""
-    if username in _entity_cache:
-        return _entity_cache[username]
-    entity = await client.get_entity(f"https://t.me/{username}")
-    _entity_cache[username] = entity
-    return entity
 
 
 async def authenticate() -> None:
@@ -84,26 +54,31 @@ async def fetch_messages_since(
     if since is not None and since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)
 
-    client = await _get_client()
     total_channels = len(usernames)
     print(f"Fetching {total_channels} channels...")
 
-    async def fetch_one(username: str) -> list[dict]:
-        try:
-            return await _fetch_channel(client, username, since)
-        except FloodWaitError as e:
-            print(f"@{username}: rate limited, waiting {e.seconds}s...")
-            await asyncio.sleep(e.seconds)
+    async with _make_client() as client:
+        if not await client.is_user_authorized():
+            raise RuntimeError(
+                "Telegram session not authorized. Generate one with: python scripts/gen_session.py"
+            )
+
+        async def fetch_one(username: str) -> list[dict]:
             try:
                 return await _fetch_channel(client, username, since)
-            except Exception as retry_err:
-                print(f"  Skipping @{username} after retry: {retry_err}")
+            except FloodWaitError as e:
+                print(f"@{username}: rate limited, waiting {e.seconds}s...")
+                await asyncio.sleep(e.seconds)
+                try:
+                    return await _fetch_channel(client, username, since)
+                except Exception as retry_err:
+                    print(f"  Skipping @{username} after retry: {retry_err}")
+                    return []
+            except Exception as e:
+                print(f"  Skipping @{username}: {e}")
                 return []
-        except Exception as e:
-            print(f"  Skipping @{username}: {e}")
-            return []
 
-    results = await asyncio.gather(*[fetch_one(u) for u in usernames])
+        results = await asyncio.gather(*[fetch_one(u) for u in usernames])
 
     all_messages: list[dict] = []
     for channel_msgs in results:
@@ -120,7 +95,7 @@ async def _fetch_channel(
     since: datetime | None,
 ) -> list[dict]:
     messages: list[dict] = []
-    entity = await _resolve_entity(client, username)
+    entity = await client.get_entity(f"https://t.me/{username}")
     title = getattr(entity, "title", username)
 
     async for msg in client.iter_messages(entity, limit=MAX_PER_CHANNEL):
