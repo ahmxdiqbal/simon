@@ -31,8 +31,10 @@ import db
 
 app = FastAPI(title="SiMon")
 
-static_path = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=static_path), name="static")
+# Static assets live in public/ and are served by Vercel's CDN in production.
+# These routes serve them for local same-origin development only.
+public_path = Path(__file__).parent / "public"
+app.mount("/static", StaticFiles(directory=public_path / "static"), name="static")
 
 # Ensure the schema exists. Idempotent; runs at import so it also covers
 # serverless runtimes that skip ASGI lifespan events.
@@ -49,12 +51,12 @@ class ChannelAdd(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return HTMLResponse(content=(static_path / "index.html").read_text())
+    return HTMLResponse(content=(public_path / "index.html").read_text())
 
 
 @app.get("/favicon.ico")
 def favicon():
-    return FileResponse(static_path / "simon-bolivar.png", media_type="image/png")
+    return FileResponse(public_path / "static" / "simon-bolivar.png", media_type="image/png")
 
 
 # --- Status & reports ---
