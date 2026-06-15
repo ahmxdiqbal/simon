@@ -7,16 +7,12 @@ into both the per-week reports and the rolling "since last read" report.
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 # Allow running as `python worker/refresh.py` from the repo root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-# The worker always uses the API backend; local MLX never runs here.
-os.environ.setdefault("SUMMARIZER_BACKEND", "deepseek")
 
 import db
 import summarizer

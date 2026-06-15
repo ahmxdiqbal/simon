@@ -1,28 +1,16 @@
 """
-Summarization dispatcher and shared utilities.
+Summarization entry points and shared citation utilities.
 
-Shared functions used by both backends:
-  - _format_messages_for_prompt()  (DeepSeek backend)
-  - _parse_response()
-  - _named_to_numbered()           (both backends)
-  - URL_PATTERN, NAMED_CITE_PATTERN
-
-The summarize() entry point dispatches to the configured backend
-based on the SUMMARIZER_BACKEND env var ("local" or "deepseek").
+summarize() and summarize_incremental() delegate to the DeepSeek backend.
+Shared helpers live here: _format_messages_for_prompt, _parse_response,
+_named_to_numbered, _numbered_to_named, _prior_source_map.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 from datetime import datetime
-
-from dotenv import load_dotenv
-
-load_dotenv()
-
-BACKEND = os.getenv("SUMMARIZER_BACKEND", "local")
 
 URL_PATTERN = re.compile(r'https?://[^\s<>\[\]()\"\']+')
 NAMED_CITE_PATTERN = re.compile(r'\[([^\[\]]+)\]')
@@ -291,13 +279,9 @@ def summarize(
     to_ts: datetime,
     on_progress: callable | None = None,
 ) -> dict:
-    """Dispatch to the configured summarization backend."""
-    if BACKEND == "deepseek":
-        from .deepseek import summarize_deepseek
-        return summarize_deepseek(messages, from_ts, to_ts, on_progress)
-    else:
-        from .local import summarize_local
-        return summarize_local(messages, from_ts, to_ts, on_progress)
+    """Summarize a batch of messages into a fresh report."""
+    from .deepseek import summarize_deepseek
+    return summarize_deepseek(messages, from_ts, to_ts, on_progress)
 
 
 def summarize_incremental(
@@ -313,7 +297,5 @@ def summarize_incremental(
     """
     if not new_messages:
         return prior
-    if BACKEND == "deepseek":
-        from .deepseek import summarize_incremental_deepseek
-        return summarize_incremental_deepseek(prior, new_messages, to_ts, on_progress)
-    raise NotImplementedError("Incremental summarization is implemented for the DeepSeek backend only.")
+    from .deepseek import summarize_incremental_deepseek
+    return summarize_incremental_deepseek(prior, new_messages, to_ts, on_progress)
