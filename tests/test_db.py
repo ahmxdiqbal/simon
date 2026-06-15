@@ -12,7 +12,7 @@ import pytest
 def db(tmp_path, monkeypatch):
     monkeypatch.setenv("TURSO_DATABASE_URL", str(tmp_path / "test.db"))
     monkeypatch.setenv("TURSO_AUTH_TOKEN", "")
-    import db as db_module
+    import core.db as db_module
     importlib.reload(db_module)
     db_module.init_db()
     return db_module

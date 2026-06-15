@@ -1,0 +1,11 @@
+# Vercel deploys only the web layer (app.py, api/, core/, public/).
+# Keep worker-only code and local artifacts out of the function bundle.
+worker/
+tests/
+scripts/
+*.db
+*.session
+.venv/
+requirements-worker.txt
+DEPLOY.md
+README.md

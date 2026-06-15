@@ -27,7 +27,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import db
+from core import db
 
 app = FastAPI(title="SiMon")
 

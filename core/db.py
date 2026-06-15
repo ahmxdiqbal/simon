@@ -21,7 +21,7 @@ from typing import Iterator
 
 import libsql
 
-DEFAULT_LOCAL = str(Path(__file__).parent / "dashboard.db")
+DEFAULT_LOCAL = str(Path(__file__).parent.parent / "dashboard.db")
 
 
 @contextmanager

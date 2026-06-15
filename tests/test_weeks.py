@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from weeks import group_by_week, week_label, week_start
+from core.weeks import group_by_week, week_label, week_start
 
 
 def test_sunday_maps_to_itself():

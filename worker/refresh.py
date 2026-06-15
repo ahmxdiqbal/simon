@@ -7,17 +7,11 @@ into both the per-week reports and the rolling "since last read" report.
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
-# Allow running as `python worker/refresh.py` from the repo root.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import db
-import summarizer
-import telegram_fetcher
-from weeks import group_by_week
+from core import db
+from core.weeks import group_by_week
+from . import summarizer, telegram_fetcher
 
 
 def _cache_raw(messages: list[dict]) -> None:

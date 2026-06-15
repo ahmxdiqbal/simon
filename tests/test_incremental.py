@@ -6,8 +6,8 @@ import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from summarizer import _named_to_numbered, _numbered_to_named, _prior_source_map
-from summarizer import deepseek
+from worker.summarizer import _named_to_numbered, _numbered_to_named, _prior_source_map
+from worker.summarizer import deepseek
 
 
 def _prior_report() -> dict:
