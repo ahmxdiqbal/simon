@@ -1,34 +1,42 @@
 # SiMon
 
-Personal geopolitics dashboard. Reads Telegram channels, extracts events via LLM, and displays them on a local web UI organized by country.
+Personal geopolitics dashboard. Reads Telegram channels, summarizes events with an LLM, and shows them on a web dashboard organized by country, as a self-updating "since last read" catch-up plus a per-week archive.
+
+## Architecture
+
+Three pieces share a database so nothing has to run on your machine:
+
+- **Vercel** serves the dashboard and the read/write API ([app.py](app.py), entry [api/index.py](api/index.py)).
+- **GitHub Actions** runs the worker ([worker/refresh.py](worker/refresh.py)) on a schedule and on demand: it fetches Telegram messages and summarizes them.
+- **Turso** (libSQL) is the shared database both sides use.
 
 ## How it works
 
-1. Connects to Telegram as a regular user account (not a bot) via the [Telethon](https://github.com/LonamiWebs/Telethon) User API
-2. Fetches messages from subscribed channels since you last clicked "Mark as Read"
-3. Sends messages to DeepSeek-V3 to extract and deduplicate events with source citations
-4. Displays results at `localhost:8000` with per-country filtering
+1. The worker connects to Telegram as a regular user account (not a bot) via the [Telethon](https://github.com/LonamiWebs/Telethon) User API and fetches messages since the last run.
+2. New messages are summarized with DeepSeek-V3, merged incrementally into the report (only the delta plus the existing summary is sent, keeping cost down) with inline source citations.
+3. Each run updates two reports: the **current week's** report (one per UTC-Sunday week, kept as an archive) and the rolling **"since last read"** catch-up.
+4. The dashboard shows the catch-up on top and the weekly archive below, with per-country tabs. Citations link back to the news outlet or the Telegram channel.
 
-Events are tagged with involved countries. The "All" tab shows everything; country tabs filter client-side. Each event has inline citations traced back to either a news outlet (if the channel cited one) or the Telegram channel itself.
+## Repo layout
 
-## Setup
+| Path | Purpose |
+|---|---|
+| `app.py`, `api/`, `public/` | Web layer: API + dashboard, served by Vercel |
+| `core/` | Shared modules (`db`, `weeks`) used by both runtimes |
+| `worker/` | Telegram fetch + summarization, run by GitHub Actions |
+| `scripts/gen_session.py` | One-time: generate the Telegram session string |
+| `tests/` | Unit tests (`pytest`) |
 
-### Prerequisites
+## Deploying
 
-- Python 3.9+
-- A Telegram account (not a bot)
-- Telegram API credentials from [my.telegram.org/apps](https://my.telegram.org/apps)
-- DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com)
+See [DEPLOY.md](DEPLOY.md) for the full Turso + secrets + Vercel setup.
 
-### Install
+## Local development
 
 ```
-git clone <repo-url> && cd SiMon
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-worker.txt
 ```
-
-### Configure
 
 Create `.env`:
 
@@ -38,32 +46,15 @@ TELEGRAM_API_HASH=your_api_hash
 DEEPSEEK_API_KEY=your_key
 ```
 
-### First run
-
-Authenticate with Telegram (interactive, saves a session file):
+With no `TURSO_DATABASE_URL` set, the app uses a local `dashboard.db` file. Authenticate Telegram once (`python -m worker.telegram_fetcher` saves a session file, or `python scripts/gen_session.py` prints a portable session string), then:
 
 ```
-python telegram_fetcher.py
+python -m worker.refresh   # fetch + summarize into the database
+python app.py              # serve the dashboard at localhost:8000
 ```
 
-Start the server:
-
-```
-python app.py
-```
-
-Open `http://localhost:8000`. Add channels via the Channels button (e.g. `@clashreport`), then hit Refresh.
-
-## File structure
-
-| File | Purpose |
-|---|---|
-| `app.py` | FastAPI server, all API routes |
-| `db.py` | SQLite wrapper (channels, messages, summaries, state) |
-| `telegram_fetcher.py` | Telethon message fetcher |
-| `summarizer.py` | DeepSeek summarization + citation processing |
-| `static/index.html` | Single-page dashboard UI |
+Run the tests with `pytest`.
 
 ## Cost
 
-DeepSeek-V3 pricing: $0.28/MTok input (cache miss), $0.42/MTok output. A typical refresh of a few hundred messages costs under $0.01. Cost per run is displayed in the header.
+DeepSeek-V3 pricing: $0.28/MTok input, $0.42/MTok output. Incremental merging keeps each refresh small; a typical run costs well under $0.01. Per-report cost is shown in the dashboard header.
