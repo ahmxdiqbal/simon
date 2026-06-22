@@ -4,943 +4,332 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/png" href="/static/simon-bolivar.png">
-  <title>SiMon</title>
+  <title>The Situation Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..800;1,6..72,300..600&family=Libre+Franklin:wght@400;500;600;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --border: #2a2d3a;
-      --accent: #4f8ef7;
-      --accent-dim: #2a4a8a;
-      --text: #e2e8f0;
-      --text-dim: #8892a4;
-      --success: #48bb78;
-      --warning: #f6ad55;
-      --danger: #fc8181;
-      --nation-header: #c9a84c;
+    :root{
+      --paper:#f4f1e7; --ink:#191712; --ink-strong:#100e09; --muted:#6b6450;
+      --faint:#7a7460; --hair:#d3ccba; --rule:#2a261c; --edge:#cfc8b6;
+      --accent:#8a1c1c; --serif:'Newsreader',Georgia,serif; --sans:'Libre Franklin',sans-serif;
     }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--paper);color:var(--ink);font-family:var(--serif);
+      -webkit-font-smoothing:antialiased;line-height:1.5;min-height:100vh;}
+    .paper{max-width:1080px;margin:0 auto;padding:22px 34px 30px;}
+    a{color:inherit;text-decoration:none;}
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .ear{font-family:var(--sans);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);line-height:1.45;}
+    .ear b{color:var(--ink-strong);font-weight:600;}
+    .masthead{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;padding:4px 0;}
+    .mast{font-family:'Cinzel',serif;font-weight:700;font-size:40px;letter-spacing:.02em;text-align:center;color:var(--ink-strong);white-space:nowrap;line-height:1;cursor:pointer;}
+    .thin{border-top:1px solid var(--rule);}
+    .thick{border-top:3px solid var(--ink-strong);}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 15px;
-      line-height: 1.65;
-      min-height: 100vh;
-    }
+    .nav{font-family:var(--sans);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;text-align:center;padding:9px 4px;color:#3b372c;}
+    .nav a{cursor:pointer;white-space:nowrap;}
+    .nav a:hover{color:var(--accent);}
+    .nav a.active{color:var(--accent);font-weight:600;}
+    .nav .sep{color:#b9b09a;margin:0 8px;}
 
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
+    .body{display:grid;grid-template-columns:1fr 230px;gap:0;margin-top:16px;}
+    .main{padding-right:26px;border-right:1px solid var(--edge);min-width:0;}
+    .rail{padding-left:20px;}
 
-    .header-left h1 {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
+    .kicker{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:3px;}
+    .sect{font-size:30px;font-weight:600;line-height:1.04;color:var(--ink-strong);}
+    .sect i{font-style:italic;font-weight:400;}
+    .sect-row{display:flex;align-items:baseline;justify-content:space-between;gap:14px;}
+    .markread{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);cursor:pointer;white-space:nowrap;}
+    .markread:hover{text-decoration:underline;}
+    .coverage{font-family:var(--sans);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-top:5px;}
 
-    .header-meta {
-      font-size: 12px;
-      color: var(--text-dim);
-      margin-top: 2px;
-    }
+    .dispatches{column-width:300px;column-gap:28px;column-rule:1px solid var(--hair);margin-top:14px;}
+    .ev{break-inside:avoid;padding:12px 0;border-top:1px solid var(--hair);}
+    .ev:first-child{padding-top:6px;border-top:none;}
+    .evt{font-size:16px;line-height:1.45;}
+    .lead{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-strong);margin-right:2px;}
+    .cite{font-family:var(--sans);font-size:10px;font-weight:600;vertical-align:super;color:var(--accent);margin:0 1px;}
+    .src{font-family:var(--sans);font-size:10.5px;letter-spacing:.02em;color:var(--faint);margin-top:5px;line-height:1.6;}
+    .src .n{color:var(--ink-strong);font-weight:600;}
+    .src a{border-bottom:1px solid #c9c0aa;}
+    .src a:hover{color:var(--accent);border-color:var(--accent);}
 
-    .header-actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
+    .rail-h{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-strong);padding-bottom:6px;border-bottom:2px solid var(--ink-strong);}
+    .rail-sub{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:16px 0 0;}
+    .ri{padding:9px 0;border-top:1px solid var(--hair);cursor:pointer;}
+    .ri:hover .w{color:var(--accent);}
+    .ri.active .w{color:var(--accent);}
+    .ri .w{font-size:17px;font-weight:500;line-height:1.1;}
+    .ri .m{font-family:var(--sans);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint);margin-top:2px;}
+    .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:1px;}
 
-    button {
-      cursor: pointer;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      padding: 8px 16px;
-      transition: opacity 0.15s, background 0.15s;
-    }
+    .colophon{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;align-items:center;
+      font-family:var(--sans);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:10px 0 0;}
+    .colophon b{color:var(--ink-strong);font-weight:600;}
+    .colophon a{cursor:pointer;border-bottom:1px solid #c9c0aa;}
+    .colophon a:hover{color:var(--accent);}
 
-    button:hover { opacity: 0.85; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .empty{font-family:var(--serif);font-size:17px;color:var(--faint);text-align:center;padding:60px 20px;font-style:italic;}
 
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-success { background: var(--success); color: #000; }
-    .btn-ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-    .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
-    .btn-marked { background: var(--border); color: var(--text-dim); cursor: default; }
-    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .overlay{display:none;position:fixed;inset:0;background:rgba(20,18,12,.5);z-index:100;align-items:center;justify-content:center;}
+    .overlay.on{display:flex;}
+    .modal{background:var(--paper);border:1px solid var(--ink-strong);border-radius:2px;padding:26px 28px;width:440px;max-width:92vw;max-height:84vh;overflow-y:auto;}
+    .modal h2{font-family:var(--serif);font-size:22px;font-weight:600;}
+    .modal .close{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);cursor:pointer;}
+    .row{display:flex;justify-content:space-between;align-items:center;}
+    input[type=text]{flex:1;background:#fff;border:1px solid var(--edge);border-radius:2px;color:var(--ink);
+      font-family:var(--sans);font-size:13px;padding:8px 10px;outline:none;}
+    input[type=text]:focus{border-color:var(--accent);}
+    .btn{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+      cursor:pointer;border:1px solid var(--ink-strong);background:var(--ink-strong);color:var(--paper);padding:8px 14px;border-radius:2px;}
+    .btn.ghost{background:transparent;color:var(--ink-strong);}
+    .btn.sm{padding:5px 10px;font-size:10px;}
+    .chan{display:flex;justify-content:space-between;align-items:center;font-family:var(--sans);font-size:13px;padding:7px 0;border-top:1px solid var(--hair);}
+    .chan .rm{color:var(--accent);cursor:pointer;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:600;}
 
-    main {
-      display: grid;
-      grid-template-columns: 260px 1fr;
-      gap: 0;
-      max-width: 1400px;
-      margin: 0 auto;
-    }
+    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--ink-strong);
+      color:var(--paper);font-family:var(--sans);font-size:12px;letter-spacing:.03em;padding:10px 18px;border-radius:2px;opacity:0;transition:all .2s;z-index:200;}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-    /* Sidebar */
-    aside {
-      border-right: 1px solid var(--border);
-      padding: 24px 16px;
-      position: sticky;
-      top: 57px;
-      height: calc(100vh - 57px);
-      overflow-y: auto;
-    }
-
-    .sidebar-section {
-      margin-bottom: 28px;
-    }
-
-    .sidebar-label {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      margin-bottom: 10px;
-    }
-
-    .nation-nav-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 5px;
-      color: var(--text-dim);
-      font-size: 13px;
-      cursor: pointer;
-      text-decoration: none;
-      transition: background 0.1s, color 0.1s;
-    }
-
-    .nation-nav-item .nav-text {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .nation-nav-item:hover {
-      background: var(--border);
-      color: var(--text);
-    }
-
-    .nation-nav-item.active {
-      background: var(--accent-dim);
-      color: var(--accent);
-    }
-
-    .unread-dot {
-      flex: none;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
-    .channel-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 5px 8px;
-      border-radius: 5px;
-      font-size: 12px;
-      color: var(--text-dim);
-    }
-
-    .channel-item:hover { background: var(--border); }
-
-    .channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-    .add-channel-form {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-    }
-
-    input[type="text"] {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      color: var(--text);
-      font-size: 12px;
-      padding: 6px 8px;
-      outline: none;
-    }
-
-    input[type="text"]:focus { border-color: var(--accent); }
-
-    /* Content area */
-    .content {
-      padding: 28px 40px;
-    }
-
-    /* Report title bar */
-    .report-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 18px;
-    }
-
-    .report-title {
-      font-size: 22px;
-      font-weight: 600;
-    }
-
-    /* Status bar */
-    .status-bar {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px 18px;
-      margin-bottom: 28px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .status-info { font-size: 13px; color: var(--text-dim); }
-    .status-info strong { color: var(--text); }
-
-    /* Nation sections */
-    .nation-section {
-      margin-bottom: 36px;
-      scroll-margin-top: 80px;
-    }
-
-    .nation-header {
-      display: flex;
-      align-items: baseline;
-      gap: 12px;
-      margin-bottom: 14px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .nation-name {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--nation-header);
-    }
-
-    .nation-event-count {
-      font-size: 12px;
-      color: var(--text-dim);
-      background: var(--border);
-      padding: 2px 8px;
-      border-radius: 99px;
-    }
-
-    .nation-summary {
-      color: var(--text);
-      line-height: 1.75;
-    }
-
-    .event-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .event-row {
-      display: grid;
-      grid-template-columns: 1fr 180px;
-      gap: 16px;
-      padding: 8px 0 8px 16px;
-      position: relative;
-      border-bottom: 1px solid var(--border);
-      font-size: 14px;
-      align-items: baseline;
-    }
-
-    .event-row:last-child { border-bottom: none; }
-
-    .event-row::before {
-      content: "·";
-      position: absolute;
-      left: 0;
-      color: var(--nation-header);
-      font-weight: bold;
-    }
-
-    .event-text { line-height: 1.7; }
-
-    .event-sources {
-      font-size: 11px;
-      color: var(--text-dim);
-      line-height: 1.6;
-      padding-top: 2px;
-    }
-
-    .event-sources .src-entry {
-      display: block;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .event-sources .src-num {
-      color: var(--accent);
-      font-weight: 600;
-      margin-right: 3px;
-    }
-
-    .event-sources .src-channel { color: var(--text-dim); }
-    .event-sources .src-outlet { color: var(--warning); }
-
-    sup.cite {
-      font-size: 10px;
-      color: var(--accent);
-      cursor: help;
-      font-weight: 600;
-      position: relative;
-      top: -0.4em;
-      margin: 0 1px;
-    }
-
-    sup.cite:hover {
-      color: var(--warning);
-    }
-
-    a sup.cite { color: var(--accent); }
-    a:hover sup.cite { color: var(--warning); }
-    a { text-decoration: none; }
-
-    /* Tooltip */
-    sup.cite .cite-tip {
-      display: none;
-      position: absolute;
-      bottom: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 3px 8px;
-      font-size: 11px;
-      font-weight: 400;
-      color: var(--text);
-      white-space: nowrap;
-      z-index: 20;
-      pointer-events: none;
-    }
-
-    sup.cite:hover .cite-tip { display: block; }
-
-    sup.cite-bad { color: var(--danger); }
-    sup.cite-bad:hover { color: var(--danger); }
-
-    .panel { display: none; }
-    .panel.active { display: block; }
-
-    /* Empty / loading states */
-    .empty-state {
-      text-align: center;
-      padding: 80px 20px;
-      color: var(--text-dim);
-    }
-
-    .empty-state h2 { font-size: 18px; margin-bottom: 8px; color: var(--text); }
-    .empty-state p { font-size: 14px; }
-
-    .loading-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.75);
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 0;
-    }
-
-    .loading-overlay.active { display: flex; }
-
-    .loading-panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 32px 40px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      max-width: 360px;
-    }
-
-    .spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .loading-text { color: var(--text-dim); font-size: 14px; text-align: center; }
-
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 18px;
-      font-size: 13px;
-      opacity: 0;
-      transform: translateY(8px);
-      transition: all 0.2s;
-      z-index: 200;
-    }
-
-    .toast.show { opacity: 1; transform: translateY(0); }
-    .toast.success { border-color: var(--success); color: var(--success); }
-    .toast.error { border-color: var(--danger); color: var(--danger); }
-
-    .period-label {
-      font-size: 12px;
-      color: var(--text-dim);
-      margin-bottom: 24px;
-      padding: 6px 12px;
-      background: var(--surface);
-      border-radius: 4px;
-      display: inline-block;
+    @media(max-width:720px){
+      .paper{padding:16px 18px 24px;}
+      .masthead{grid-template-columns:1fr;text-align:center;gap:8px;}
+      .ear{text-align:center!important;}
+      .mast{font-size:30px;white-space:normal;}
+      .body{grid-template-columns:1fr;}
+      .main{padding-right:0;border-right:none;}
+      .rail{padding-left:0;margin-top:24px;border-top:3px solid var(--ink-strong);padding-top:8px;}
     }
   </style>
 </head>
 <body>
 
-<div class="loading-overlay" id="loading">
-  <div class="loading-panel">
-    <div class="spinner"></div>
-    <div class="loading-text" id="loading-text">Loading...</div>
-  </div>
-</div>
-
+<div class="overlay" id="loading"><div class="modal" style="width:auto;text-align:center;"><div style="font-family:var(--sans);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);">Going to press…</div></div></div>
 <div class="toast" id="toast"></div>
 
-<header>
-  <div class="header-left">
-    <h1>SiMon</h1>
-    <div class="header-meta" id="header-meta">Loading...</div>
+<div class="paper">
+  <div class="masthead">
+    <div class="ear"><b id="m-date">—</b><br><span id="m-updated">Loading…</span></div>
+    <div class="mast" onclick="selectReport('unread')" title="Latest">The Situation Monitor</div>
+    <div class="ear" style="text-align:right;">Vol. I<br><span id="m-edition">No. 1</span></div>
   </div>
-  <div class="header-actions">
-    <span id="cost-badge" style="display:none;font-size:12px;color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:5px 10px;"></span>
-    <button class="btn-ghost" onclick="openChannelManager()">Channels</button>
-    <button class="btn-success" id="mark-read-btn" onclick="markRead()" style="display:none;">Mark catch-up read</button>
-    <button class="btn-primary" id="refresh-btn" onclick="refresh()">Refresh</button>
-  </div>
-</header>
+  <div class="thick" style="margin-top:6px;"></div>
+  <div class="nav" id="nav"></div>
+  <div class="thin"></div>
 
-<main>
-  <aside>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Reports</div>
-      <div id="report-nav"></div>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Nations</div>
-      <div id="nation-nav"></div>
-    </div>
-  </aside>
-
-  <div class="content">
-    <div class="report-bar" id="report-bar" style="display:none;">
-      <div class="report-title" id="report-title"></div>
-      <button class="btn-success btn-sm" id="week-read-btn" onclick="markActiveWeekRead()" style="display:none;">Mark week read</button>
-    </div>
-
-    <div id="status-bar" class="status-bar" style="display:none">
-      <div class="status-info" id="status-info"></div>
-    </div>
-
-    <div id="summary-content">
-      <div class="empty-state">
-        <h2>No reports yet</h2>
-        <p>Add your Telegram channels, then click <strong>Refresh</strong>. Reports also build automatically on a schedule.</p>
+  <div class="body">
+    <div class="main">
+      <div class="kicker" id="kicker">Since you last read</div>
+      <div class="sect-row">
+        <div class="sect" id="sect">The Catch&#8209;Up</div>
+        <span class="markread" id="markread" style="display:none;"></span>
       </div>
+      <div class="coverage" id="coverage"></div>
+      <div id="content"><div class="empty">Setting the type…</div></div>
+    </div>
+    <div class="rail">
+      <div class="rail-h">The File</div>
+      <div id="rail"></div>
     </div>
   </div>
-</main>
 
-<!-- Channel Manager Modal -->
-<div id="channel-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:50;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px;width:420px;max-height:80vh;overflow-y:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-      <h2 style="font-size:16px;">Manage Channels</h2>
-      <button class="btn-ghost btn-sm" onclick="closeChannelManager()">Close</button>
+  <div class="thick" style="margin-top:20px;"></div>
+  <div class="colophon" id="colophon"><a onclick="openChannels()">Manage channels</a></div>
+</div>
+
+<div class="overlay" id="channel-modal">
+  <div class="modal">
+    <div class="row" style="margin-bottom:18px;"><h2>Channels</h2><span class="close" onclick="closeChannels()">Close</span></div>
+    <div class="row" style="gap:8px;margin-bottom:18px;">
+      <input type="text" id="new-channel" placeholder="@channelname" onkeydown="if(event.key==='Enter')addChannel()" />
+      <button class="btn" onclick="addChannel()">Add</button>
     </div>
-
-    <div class="sidebar-label" style="margin-bottom:8px;">Add Channel</div>
-    <div class="add-channel-form" style="margin-bottom:20px;">
-      <input type="text" id="new-channel-input" placeholder="@channelname" onkeydown="if(event.key==='Enter')addChannel()" />
-      <button class="btn-primary btn-sm" onclick="addChannel()">Add</button>
-    </div>
-
-    <div class="sidebar-label" style="margin-bottom:8px;">Current Channels</div>
-    <div id="channel-list-modal"></div>
+    <div id="channel-list"></div>
   </div>
 </div>
 
 <script>
   let reports = { unread: null, weeks: [] };
-  let active = null;  // { kind: 'unread' | 'week', key: string }
+  let status = {};
+  let active = null;
+  let nation = '__all__';
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-  // --- Init ---
-  async function init() {
-    await loadStatus();
-    await loadReports();
+  async function init(){
+    document.getElementById('m-date').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    await Promise.all([loadStatus(), loadReports()]);
   }
 
-  // --- Status (header) ---
-  async function loadStatus() {
-    try {
-      const s = await api('/api/status');
-      const refresh = s.last_refresh_at ? 'Updated ' + formatDate(s.last_refresh_at) : 'Never refreshed';
-      const unread = s.unread_week_count
-        ? `  ·  ${s.unread_week_count} unread week${s.unread_week_count !== 1 ? 's' : ''}`
-        : '';
-      document.getElementById('header-meta').textContent =
-        `${refresh}  ·  ${s.channel_count} channel${s.channel_count !== 1 ? 's' : ''}${unread}`;
-    } catch(e) {
-      document.getElementById('header-meta').textContent = 'Could not load status';
+  async function loadStatus(){
+    try{ status = await api('/api/status'); }catch(e){ status = {}; }
+    document.getElementById('m-updated').textContent = status.last_refresh_at ? 'Updated ' + fmtTime(status.last_refresh_at) : 'Not yet refreshed';
+    document.getElementById('m-edition').textContent = 'No. ' + ((status.weekly_report_count||0)+1);
+  }
+
+  async function loadReports(){
+    try{ reports = await api('/api/reports'); }
+    catch(e){ showToast('Could not load dispatches.'); return; }
+    if(!active || !exists(active)) active = reports.unread ? {kind:'unread'} : (reports.weeks[0] ? {kind:'week',key:reports.weeks[0].week_start} : null);
+    nation = '__all__';
+    renderRail(); renderActive();
+  }
+
+  function exists(s){ return s.kind==='unread' ? !!reports.unread : reports.weeks.some(w=>w.week_start===s.key); }
+  function activeData(){
+    if(!active) return null;
+    if(active.kind==='unread') return reports.unread ? reports.unread.data : null;
+    const w = reports.weeks.find(x=>x.week_start===active.key); return w ? w.data : null;
+  }
+
+  function selectReport(kind, key){
+    if(kind==='unread' && !reports.unread) return;
+    active = kind==='unread' ? {kind:'unread'} : {kind:'week', key};
+    nation = '__all__';
+    renderRail(); renderActive();
+  }
+
+  function renderRail(){
+    let h = '';
+    if(reports.unread){
+      const a = active && active.kind==='unread' ? ' active' : '';
+      h += '<div class="rail-sub" style="margin-top:2px;">Latest</div>';
+      h += `<div class="ri${a}" onclick="selectReport('unread')"><div class="w">The Catch&#8209;Up<span class="dot"></span></div><div class="m">Since you last read</div></div>`;
     }
-  }
-
-  // --- Reports ---
-  async function loadReports() {
-    try {
-      reports = await api('/api/reports');
-    } catch(e) {
-      showToast('Could not load reports.', 'error');
-      return;
+    h += '<div class="rail-sub">The Archive</div>';
+    if(reports.weeks.length){
+      h += reports.weeks.map(w=>{
+        const a = active && active.kind==='week' && active.key===w.week_start ? ' active' : '';
+        const n = (w.data.events||[]).length;
+        const dot = w.read_at===null ? '<span class="dot"></span>' : '';
+        return `<div class="ri${a}" onclick="selectReport('week','${w.week_start}')"><div class="w">${weekLabel(w.week_start)}${dot}</div><div class="m">${n} dispatch${n!==1?'es':''}</div></div>`;
+      }).join('');
+    } else {
+      h += '<div class="m" style="font-family:var(--sans);font-size:11px;color:var(--faint);padding:8px 0;">No editions yet.</div>';
     }
-    buildReportNav();
-
-    // Preserve the current selection if it still exists, else pick a default.
-    if (!active || !reportExists(active)) {
-      if (reports.unread) active = { kind: 'unread' };
-      else if (reports.weeks.length) active = { kind: 'week', key: reports.weeks[0].week_start };
-      else active = null;
-    }
-    renderActive();
+    document.getElementById('rail').innerHTML = h;
   }
 
-  function reportExists(sel) {
-    if (sel.kind === 'unread') return reports.unread != null;
-    return reports.weeks.some(w => w.week_start === sel.key);
-  }
-
-  function buildReportNav() {
-    const nav = document.getElementById('report-nav');
-    const items = [];
-
-    if (reports.unread) {
-      items.push(navItem('Since last read', { kind: 'unread' }, true));
-    }
-    for (const w of reports.weeks) {
-      items.push(navItem(weekLabel(w.week_start), { kind: 'week', key: w.week_start }, w.read_at === null));
-    }
-
-    nav.innerHTML = items.length
-      ? items.join('')
-      : '<div style="font-size:12px;color:var(--text-dim);padding:4px 10px;">No reports yet</div>';
-  }
-
-  function navItem(label, sel, unread) {
-    const isActive = active && active.kind === sel.kind &&
-      (sel.kind === 'unread' || active.key === sel.key);
-    const id = sel.kind === 'unread' ? 'unread' : sel.key;
-    const dot = unread ? '<span class="unread-dot"></span>' : '';
-    return `<a class="nation-nav-item ${isActive ? 'active' : ''}" onclick="selectReport('${sel.kind}','${id}')">` +
-      `<span class="nav-text">${escHtml(label)}</span>${dot}</a>`;
-  }
-
-  function selectReport(kind, key) {
-    active = kind === 'unread' ? { kind: 'unread' } : { kind: 'week', key };
-    buildReportNav();
-    renderActive();
-  }
-
-  function activeData() {
-    if (!active) return null;
-    if (active.kind === 'unread') return reports.unread ? reports.unread.data : null;
-    const w = reports.weeks.find(x => x.week_start === active.key);
-    return w ? w.data : null;
-  }
-
-  function renderActive() {
-    const bar = document.getElementById('report-bar');
-    const title = document.getElementById('report-title');
-    const weekBtn = document.getElementById('week-read-btn');
-    const markBtn = document.getElementById('mark-read-btn');
-
-    // Catch-up mark-read button only shows when a catch-up report exists.
-    markBtn.style.display = reports.unread ? '' : 'none';
-
+  function renderActive(){
     const data = activeData();
-    if (!data) {
-      bar.style.display = 'none';
-      document.getElementById('nation-nav').innerHTML = '';
-      document.getElementById('status-bar').style.display = 'none';
-      document.getElementById('cost-badge').style.display = 'none';
-      document.getElementById('summary-content').innerHTML =
-        `<div class="empty-state"><h2>No reports yet</h2><p>Add channels, then click <strong>Refresh</strong>. Reports also build on a schedule.</p></div>`;
-      return;
-    }
+    const isUnread = active && active.kind==='unread';
+    document.getElementById('kicker').textContent = isUnread ? 'Since you last read' : 'Weekly edition';
+    document.getElementById('sect').innerHTML = isUnread ? 'The Catch&#8209;Up <i>— what moved overnight</i>' : weekLabel(active ? active.key : '');
 
-    bar.style.display = 'flex';
-    if (active.kind === 'unread') {
-      title.textContent = 'Since last read';
-      weekBtn.style.display = 'none';
-    } else {
-      const w = reports.weeks.find(x => x.week_start === active.key);
-      title.textContent = weekLabel(active.key);
-      weekBtn.style.display = (w && w.read_at === null) ? '' : 'none';
-    }
+    const mr = document.getElementById('markread');
+    if(isUnread && reports.unread){ mr.style.display=''; mr.textContent='Mark as read'; mr.onclick=markCatchupRead; }
+    else if(active && active.kind==='week'){
+      const w = reports.weeks.find(x=>x.week_start===active.key);
+      if(w && w.read_at===null){ mr.style.display=''; mr.textContent='Mark week read'; mr.onclick=markWeekRead; }
+      else mr.style.display='none';
+    } else mr.style.display='none';
 
-    renderReport(data);
+    if(!data || !(data.events||[]).length){
+      document.getElementById('nav').innerHTML=''; document.getElementById('coverage').textContent='';
+      document.getElementById('content').innerHTML='<div class="empty">No dispatches in this edition yet.</div>';
+      renderColophon(data); return;
+    }
+    renderNav(data);
+    const p = data.period||{};
+    document.getElementById('coverage').textContent = 'Coverage ' + (p.from?fmtDate(p.from)+' — ':'') + (p.to?fmtDate(p.to):'');
+    renderContent(data);
+    renderColophon(data);
   }
 
-  function renderReport(data) {
-    const events = data.events || [];
-
-    const nationSet = new Set();
-    events.forEach(e => (e.countries || []).forEach(c => nationSet.add(c)));
-    const nationNames = Array.from(nationSet).sort();
-
-    // Nation nav
-    const nav = document.getElementById('nation-nav');
-    if (events.length) {
-      nav.innerHTML =
-        `<a class="nation-nav-item active" onclick="showPanel('__all__', this)"><span class="nav-text">All</span></a>` +
-        nationNames.map(n =>
-          `<a class="nation-nav-item" onclick="showPanel('${escHtml(slugify(n))}', this)"><span class="nav-text">${escHtml(n)}</span></a>`
-        ).join('');
-    } else {
-      nav.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 10px;">No nations yet</div>';
-    }
-
-    // Cost badge
-    const cost = data.cost;
-    const costBadge = document.getElementById('cost-badge');
-    if (cost && cost.total_cost_usd != null) {
-      const inputK = (cost.input_tokens / 1000).toFixed(1);
-      const outputK = (cost.output_tokens / 1000).toFixed(1);
-      costBadge.textContent = `${data.model || 'unknown model'} · $${cost.total_cost_usd.toFixed(4)} · ${inputK}k in / ${outputK}k out`;
-      costBadge.title = `Input: $${cost.input_cost_usd.toFixed(6)}  Output: $${cost.output_cost_usd.toFixed(6)}`;
-      costBadge.style.display = '';
-    } else {
-      costBadge.style.display = 'none';
-    }
-
-    // Status bar
-    if (events.length > 0) {
-      const period = data.period || {};
-      const fromStr = period.from ? formatDate(period.from) : 'beginning';
-      const toStr = period.to ? formatDate(period.to) : 'now';
-      let costStr = cost ? ` · <strong>$${cost.total_cost_usd.toFixed(4)}</strong>` : '';
-      document.getElementById('status-info').innerHTML =
-        `<strong>${data.message_count || '?'} messages</strong> · ${events.length} events · ${nationNames.length} nations · ${fromStr} → ${toStr}${costStr}`;
-      document.getElementById('status-bar').style.display = 'flex';
-    } else {
-      document.getElementById('status-bar').style.display = 'none';
-    }
-
-    // Main content
-    const content = document.getElementById('summary-content');
-    if (events.length === 0) {
-      content.innerHTML = `<div class="empty-state"><h2>No events found</h2><p>No geopolitical events were identified for this period.</p></div>`;
-      return;
-    }
-
-    const period = data.period || {};
-    const fromStr = period.from ? formatDate(period.from) : null;
-    const toStr = period.to ? formatDate(period.to) : null;
-    const periodHtml = (fromStr || toStr)
-      ? `<div class="period-label">Coverage: ${fromStr ? fromStr + ' → ' : ''}${toStr || ''}</div>`
-      : '';
-
-    let html = `
-      <div class="panel active" id="panel-__all__">
-        ${periodHtml}
-        <div class="nation-section">
-          <div class="nation-header">
-            <span class="nation-name">All Events</span>
-            <span class="nation-event-count">${events.length} event${events.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div class="nation-summary">${renderEventList(events)}</div>
-        </div>
-      </div>
-    `;
-
-    for (const nation of nationNames) {
-      const nationEvents = events.filter(e => (e.countries || []).includes(nation));
-      html += `
-        <div class="panel" id="panel-${slugify(nation)}">
-          ${periodHtml}
-          <div class="nation-section">
-            <div class="nation-header">
-              <span class="nation-name">${escHtml(nation)}</span>
-              <span class="nation-event-count">${nationEvents.length} event${nationEvents.length !== 1 ? 's' : ''}</span>
-            </div>
-            <div class="nation-summary">${renderEventList(nationEvents)}</div>
-          </div>
-        </div>
-      `;
-    }
-
-    content.innerHTML = html;
+  function renderNav(data){
+    const set = new Set();
+    (data.events||[]).forEach(e=>(e.countries||[]).forEach(c=>set.add(c)));
+    const names = Array.from(set).sort();
+    const item = (id,label)=>`<a class="${nation===id?'active':''}" onclick="setNation('${id.replace(/'/g,"\\'")}')">${escHtml(label)}</a>`;
+    let h = item('__all__','All');
+    names.forEach(n=>{ h += '<span class="sep">·</span>' + item(n,n); });
+    document.getElementById('nav').innerHTML = h;
   }
 
-  function normSource(s) {
-    if (typeof s === 'string') return { name: s, url: null };
-    return { name: s.name || '', url: s.url || null };
+  function setNation(n){ nation=n; const d=activeData(); if(d){renderNav(d);renderContent(d);renderColophon(d);} }
+
+  function renderContent(data){
+    let events = data.events||[];
+    if(nation!=='__all__') events = events.filter(e=>(e.countries||[]).includes(nation));
+    if(!events.length){ document.getElementById('content').innerHTML='<div class="empty">No dispatches for this nation.</div>'; return; }
+    document.getElementById('content').innerHTML = '<div class="dispatches">' + events.map(renderEvent).join('') + '</div>';
   }
 
-  function renderEventList(evts) {
-    if (!evts.length) return '<p style="color:var(--text-dim);font-size:13px;">No events.</p>';
-    return '<ul class="event-list">' + evts.map(e => {
-      const sources = (e.sources || []).map(normSource);
-      const textHtml = renderCitedText(e.text, sources);
-      const srcHtml = sources.length
-        ? sources.map((s, i) => {
-            const isChannel = s.name.startsWith('@');
-            const cls = isChannel ? 'src-channel' : 'src-outlet';
-            const nameHtml = s.url
-              ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener" class="${cls}" style="text-decoration:none;border-bottom:1px dotted currentColor;">${escHtml(s.name)}</a>`
-              : `<span class="${cls}">${escHtml(s.name)}</span>`;
-            return `<span class="src-entry"><span class="src-num">[${i+1}]</span>${nameHtml}</span>`;
-          }).join('')
-        : '<span class="src-entry" style="color:var(--text-dim);">No sources</span>';
-      return `<li class="event-row"><div class="event-text">${textHtml}</div><div class="event-sources">${srcHtml}</div></li>`;
-    }).join('') + '</ul>';
+  function renderEvent(e){
+    const sources = (e.sources||[]).map(normSrc);
+    const line = (e.countries&&e.countries.length) ? `<span class="lead">${escHtml(e.countries[0])}.</span> ` : '';
+    const text = renderCited(e.text||'', sources);
+    const src = sources.length ? sources.map((s,i)=>{
+      const name = s.url ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(s.name)}</a>` : escHtml(s.name);
+      return `<span class="n">[${i+1}]</span> ${name}`;
+    }).join(' &nbsp; ') : '';
+    return `<div class="ev"><p class="evt">${line}${text}</p>${src?`<div class="src">${src}</div>`:''}</div>`;
   }
 
-  function renderCitedText(text, sources) {
-    const escaped = escHtml(text);
-    return escaped.replace(/\[(\d+)\]/g, (match, num) => {
-      const idx = parseInt(num, 10) - 1;
-      const src = sources[idx];
-      if (!src) return match;
-      const tip = `<span class="cite-tip">${escHtml(src.name)}</span>`;
-      if (src.url) {
-        return `<a href="${escHtml(src.url)}" target="_blank" rel="noopener"><sup class="cite">[${num}]${tip}</sup></a>`;
-      }
-      return `<sup class="cite">[${num}]${tip}</sup>`;
+  function renderCited(text, sources){
+    return escHtml(text).replace(/\[(\d+)\]/g,(m,num)=>{
+      const s = sources[parseInt(num,10)-1]; if(!s) return '';
+      if(s.url) return `<a href="${escHtml(s.url)}" target="_blank" rel="noopener"><sup class="cite">${num}</sup></a>`;
+      return `<sup class="cite" title="${escHtml(s.name)}">${num}</sup>`;
     });
   }
 
-  function showPanel(id, navEl) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('#nation-nav .nation-nav-item').forEach(a => a.classList.remove('active'));
-    const panel = document.getElementById('panel-' + id);
-    if (panel) panel.classList.add('active');
-    if (navEl) navEl.classList.add('active');
+  function renderColophon(data){
+    const ev = data ? (data.events||[]).length : 0;
+    const msgs = data ? (data.message_count||0) : 0;
+    const cost = data && data.cost ? data.cost.total_cost_usd : null;
+    const model = data ? (data.model||'') : '';
+    const ch = status.channel_count||0;
+    let h = `<span><b>${ev}</b> events</span><span><b>${msgs}</b> dispatches</span><span><b>${ch}</b> channels</span>`;
+    if(status.last_refresh_at) h += `<span>last refresh <b>${fmtTime(status.last_refresh_at)}</b></span>`;
+    if(cost!=null) h += `<span><b>$${cost.toFixed(4)}</b></span>`;
+    if(model) h += `<span>${escHtml(model)}</span>`;
+    h += '<a onclick="openChannels()">Manage channels</a>';
+    document.getElementById('colophon').innerHTML = h;
   }
 
-  // --- Actions ---
-  async function refresh() {
-    disableActions(true);
-    showLoading('Triggering refresh...');
-    try {
-      const res = await fetch('/api/refresh', { method: 'POST' });
-      if (res.status === 503) {
-        const err = await res.json();
-        showToast(err.detail, 'error');
-        return;
-      }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || res.statusText);
-      }
-      const before = await api('/api/status');
-      await pollForUpdate(before);
-    } catch(e) {
-      showToast('Refresh failed: ' + e.message, 'error');
-    } finally {
-      hideLoading();
-      disableActions(false);
-    }
+  async function markCatchupRead(){
+    try{ await api('/api/mark-read','POST'); active=null; await Promise.all([loadStatus(),loadReports()]); showToast('Catch-up cleared.'); }
+    catch(e){ showToast('Failed to mark read.'); }
+  }
+  async function markWeekRead(){
+    if(!active||active.kind!=='week') return;
+    try{ await api('/api/reports/'+active.key+'/mark-read','POST'); await Promise.all([loadStatus(),loadReports()]); showToast('Week marked read.'); }
+    catch(e){ showToast('Failed to mark read.'); }
   }
 
-  async function pollForUpdate(before, attempts = 40) {
-    for (let i = 0; i < attempts; i++) {
-      await sleep(5000);
-      showLoading(`Worker running on GitHub Actions... (${(i + 1) * 5}s)`);
-      let s;
-      try { s = await api('/api/status'); } catch(e) { continue; }
-      if (s.last_refresh_at !== before.last_refresh_at) {
-        await loadStatus();
-        await loadReports();
-        showToast('Reports updated.', 'success');
-        return;
-      }
-    }
-    showToast('Still running. Reports will update once the worker finishes.', '');
-    await loadStatus();
-    await loadReports();
+  async function openChannels(){ document.getElementById('channel-modal').classList.add('on'); await refreshChannels(); }
+  function closeChannels(){ document.getElementById('channel-modal').classList.remove('on'); }
+  async function refreshChannels(){
+    const list = await api('/api/channels');
+    const el = document.getElementById('channel-list');
+    el.innerHTML = list.length ? list.map(c=>`<div class="chan"><span>@${escHtml(c.username)}${c.title?' · '+escHtml(c.title):''}</span><span class="rm" onclick="removeChannel('${escHtml(c.username)}')">Remove</span></div>`).join('')
+      : '<div style="font-family:var(--sans);font-size:12px;color:var(--faint);padding:8px 0;">No channels yet.</div>';
+  }
+  async function addChannel(){
+    const i = document.getElementById('new-channel'); const u = i.value.trim(); if(!u) return;
+    try{ await api('/api/channels','POST',{username:u}); i.value=''; await refreshChannels(); await loadStatus(); showToast('Added @'+u.replace('@','')); }
+    catch(e){ showToast('Failed to add channel.'); }
+  }
+  async function removeChannel(u){
+    try{ await api('/api/channels/'+u,'DELETE'); await refreshChannels(); await loadStatus(); showToast('Removed @'+u); }
+    catch(e){ showToast('Failed to remove channel.'); }
   }
 
-  async function markRead() {
-    try {
-      await api('/api/mark-read', 'POST');
-      active = null;  // catch-up is gone; fall back to a default report
-      await loadStatus();
-      await loadReports();
-      showToast('Catch-up cleared.', 'success');
-    } catch(e) {
-      showToast('Failed to mark catch-up read.', 'error');
-    }
-  }
-
-  async function markActiveWeekRead() {
-    if (!active || active.kind !== 'week') return;
-    try {
-      await api('/api/reports/' + active.key + '/mark-read', 'POST');
-      await loadStatus();
-      await loadReports();
-      showToast('Week marked read.', 'success');
-    } catch(e) {
-      showToast('Failed to mark week read.', 'error');
-    }
-  }
-
-  // --- Channel manager ---
-  async function openChannelManager() {
-    document.getElementById('channel-modal').style.display = 'flex';
-    await refreshChannelList();
-  }
-
-  function closeChannelManager() {
-    document.getElementById('channel-modal').style.display = 'none';
-  }
-
-  async function refreshChannelList() {
-    const channels = await api('/api/channels');
-    const el = document.getElementById('channel-list-modal');
-    if (!channels.length) {
-      el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px 0;">No channels added yet.</div>';
-      return;
-    }
-    el.innerHTML = channels.map(c => `
-      <div class="channel-item">
-        <span class="channel-name">@${escHtml(c.username)}${c.title ? ' · ' + escHtml(c.title) : ''}</span>
-        <button class="btn-danger btn-sm" onclick="removeChannel('${escHtml(c.username)}')">Remove</button>
-      </div>
-    `).join('');
-  }
-
-  async function addChannel() {
-    const input = document.getElementById('new-channel-input');
-    const username = input.value.trim();
-    if (!username) return;
-    try {
-      await api('/api/channels', 'POST', { username });
-      input.value = '';
-      await refreshChannelList();
-      await loadStatus();
-      showToast(`Added @${username.replace('@','')}`, 'success');
-    } catch(e) {
-      showToast('Failed to add channel: ' + e.message, 'error');
-    }
-  }
-
-  async function removeChannel(username) {
-    try {
-      await api('/api/channels/' + username, 'DELETE');
-      await refreshChannelList();
-      await loadStatus();
-      showToast(`Removed @${username}`, 'success');
-    } catch(e) {
-      showToast('Failed to remove channel.', 'error');
-    }
-  }
-
-  // --- Utilities ---
-  async function api(path, method = 'GET', body = null) {
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(path, opts);
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || res.statusText);
-    }
+  async function api(path, method='GET', body=null){
+    const opts={method,headers:{'Content-Type':'application/json'}};
+    if(body) opts.body=JSON.stringify(body);
+    const res=await fetch(path,opts);
+    if(!res.ok){ const e=await res.json().catch(()=>({detail:res.statusText})); throw new Error(e.detail||res.statusText); }
     return res.json();
   }
-
-  function weekLabel(weekStart) {
-    // weekStart is an ISO date "YYYY-MM-DD" (UTC Sunday).
-    const [y, m, d] = weekStart.split('-');
-    return `Week of ${m}/${d}/${y}`;
-  }
-
-  function formatDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      month: 'short', day: 'numeric', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
-  }
-
-  function slugify(s) {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  }
-
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  function showLoading(text) {
-    document.getElementById('loading-text').textContent = text || 'Loading...';
-    document.getElementById('loading').classList.add('active');
-  }
-
-  function hideLoading() {
-    document.getElementById('loading').classList.remove('active');
-  }
-
-  function disableActions(disabled) {
-    document.getElementById('refresh-btn').disabled = disabled;
-    document.getElementById('mark-read-btn').disabled = disabled;
-  }
-
+  function normSrc(s){ return typeof s==='string'?{name:s,url:null}:{name:s.name||'',url:s.url||null}; }
+  function weekLabel(ws){ if(!ws) return ''; const [y,m,d]=ws.split('-'); return `Week of ${m}/${d}/${y}`; }
+  function fmtDate(iso){ if(!iso) return ''; return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  function fmtTime(iso){ if(!iso) return ''; return new Date(iso).toLocaleString(undefined,{hour:'numeric',minute:'2-digit'}); }
+  function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   let toastTimer;
-  function showToast(msg, type = '') {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.className = 'toast show' + (type ? ' ' + type : '');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.className = 'toast'; }, 3500);
-  }
+  function showToast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.className='toast show'; clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.className='toast',3200); }
 
   init();
 </script>
