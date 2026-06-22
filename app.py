@@ -31,10 +31,13 @@ from core import db
 
 app = FastAPI(title="SiMon")
 
-# Static assets live in public/ and are served by Vercel's CDN in production.
-# These routes serve them for local same-origin development only.
+# The function serves the dashboard and assets from public/ (bundled into the
+# lambda via vercel.json includeFiles). Guarded so a missing dir can't crash
+# startup on a runtime where public/ isn't present.
 public_path = Path(__file__).parent / "public"
-app.mount("/static", StaticFiles(directory=public_path / "static"), name="static")
+_static_dir = public_path / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 # Schema is owned by the worker (and already exists in Turso); the web layer
 # only reads/writes rows, so it does no DB work at import.

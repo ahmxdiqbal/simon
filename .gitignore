@@ -27,3 +27,4 @@ build/
 tests/fixtures/
 tests/summaries/
 tests/debug/
+.vercel
