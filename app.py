@@ -36,9 +36,8 @@ app = FastAPI(title="SiMon")
 public_path = Path(__file__).parent / "public"
 app.mount("/static", StaticFiles(directory=public_path / "static"), name="static")
 
-# Ensure the schema exists. Idempotent; runs at import so it also covers
-# serverless runtimes that skip ASGI lifespan events.
-db.init_db()
+# Schema is owned by the worker (and already exists in Turso); the web layer
+# only reads/writes rows, so it does no DB work at import.
 
 
 # --- Models ---
