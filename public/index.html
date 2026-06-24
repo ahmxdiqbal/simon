@@ -27,11 +27,20 @@
     .thin{border-top:1px solid var(--rule);}
     .thick{border-top:3px solid var(--ink-strong);}
 
-    .nav{font-family:var(--sans);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;text-align:center;padding:9px 4px;color:#3b372c;}
+    .nav-wrap{position:relative;}
+    .nav{font-family:var(--sans);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;text-align:center;padding:9px 4px;color:#3b372c;overflow-x:auto;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none;}
+    .nav::-webkit-scrollbar{display:none;}
+    .nav-wrap.can-scroll .nav{padding-left:28px;padding-right:28px;}
     .nav a{cursor:pointer;white-space:nowrap;}
     .nav a:hover{color:var(--accent);}
     .nav a.active{color:var(--accent);font-weight:600;}
     .nav .sep{color:#b9b09a;margin:0 8px;}
+    .nav-scroll{position:absolute;top:0;bottom:0;width:28px;display:flex;align-items:center;justify-content:center;background:var(--paper);border:none;color:var(--muted);cursor:pointer;z-index:2;opacity:0;transition:opacity .2s;pointer-events:none;padding:0;}
+    .nav-scroll-left{left:0;}
+    .nav-scroll-right{right:0;}
+    .nav-wrap.can-scroll .nav-scroll{opacity:1;pointer-events:auto;}
+    .nav-scroll:hover{color:var(--accent);}
+    .nav-scroll:disabled{color:var(--hair);cursor:default;}
 
     .body{display:grid;grid-template-columns:1fr 230px;gap:0;margin-top:16px;}
     .main{padding-right:26px;border-right:1px solid var(--edge);min-width:0;}
@@ -116,7 +125,11 @@
     <div class="ear" style="text-align:right;">Vol. I<br><span id="m-edition">No. 1</span></div>
   </div>
   <div class="thick" style="margin-top:6px;"></div>
-  <div class="nav" id="nav"></div>
+  <div class="nav-wrap">
+    <button class="nav-scroll nav-scroll-left" id="nav-scroll-left" aria-label="Scroll left"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+    <div class="nav" id="nav"></div>
+    <button class="nav-scroll nav-scroll-right" id="nav-scroll-right" aria-label="Scroll right"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+  </div>
   <div class="thin"></div>
 
   <div class="body">
@@ -158,6 +171,7 @@
 
   async function init(){
     document.getElementById('m-date').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    initNavScroll();
     await Promise.all([loadStatus(), loadReports()]);
   }
 
@@ -244,6 +258,37 @@
     let h = item('__all__','All');
     names.forEach(n=>{ h += '<span class="sep">·</span>' + item(n,n); });
     document.getElementById('nav').innerHTML = h;
+    updateNavScroll();
+  }
+
+  function initNavScroll(){
+    const nav=document.getElementById('nav');
+    const wrap=nav.closest('.nav-wrap');
+    if(!wrap) return;
+    nav.addEventListener('wheel',e=>{
+      if(nav.scrollWidth<=nav.clientWidth) return;
+      if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){
+        e.preventDefault();
+        nav.scrollLeft+=e.deltaY;
+      }
+    });
+    document.getElementById('nav-scroll-left').addEventListener('click',()=>nav.scrollBy({left:-200,behavior:'smooth'}));
+    document.getElementById('nav-scroll-right').addEventListener('click',()=>nav.scrollBy({left:200,behavior:'smooth'}));
+    nav.addEventListener('scroll',updateNavScroll);
+    window.addEventListener('resize',updateNavScroll);
+  }
+
+  function updateNavScroll(){
+    const nav=document.getElementById('nav');
+    const wrap=nav.closest('.nav-wrap');
+    if(!wrap) return;
+    const canScroll=nav.scrollWidth>nav.clientWidth+1;
+    wrap.classList.toggle('can-scroll',canScroll);
+    const leftBtn=document.getElementById('nav-scroll-left');
+    const rightBtn=document.getElementById('nav-scroll-right');
+    if(!canScroll){ leftBtn.style.display='none'; rightBtn.style.display='none'; return; }
+    leftBtn.style.display=nav.scrollLeft>1?'flex':'none';
+    rightBtn.style.display=nav.scrollLeft<nav.scrollWidth-nav.clientWidth-1?'flex':'none';
   }
 
   function setNation(n){ nation=n; const d=activeData(); if(d){renderNav(d);renderContent(d);renderColophon(d);} }
